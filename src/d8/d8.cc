@@ -4755,7 +4755,14 @@ Local<ObjectTemplate> Shell::CreateGlobalTemplate(Isolate* isolate) {
   global_template->Set(isolate, "performance",
                        Shell::CreatePerformanceTemplate(isolate));
   global_template->Set(isolate, "Worker", Shell::CreateWorkerTemplate(isolate));
-
+  // Add readBytes and writeBytes for I/O (stdin, stdout)
+  global_template->Set(
+    isolate, "readBytes",
+    v8::FunctionTemplate::New(isolate, Shell::ReadBytes));
+  // Add readBytes and writeBytes for I/O (stdin, stdout)
+  global_template->Set(
+    isolate, "writeBytes",
+    v8::FunctionTemplate::New(isolate, Shell::WriteBytes));
   // Prevent fuzzers from creating side effects.
   if (!i::v8_flags.fuzzing) {
     global_template->Set(isolate, "os", Shell::CreateOSTemplate(isolate));
@@ -5737,6 +5744,108 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& info) {
 
   info.GetReturnValue().Set(buffer);
 }
+
+// Add readBytes and writeBytes for I/O (stdin, stdout)
+void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+
+  // 1. Ensure at least one argument was passed and that it can be parsed as a 32-bit Integer
+  if (args.Length() < 1 || !args[0]->IsUint32()) {
+    isolate->ThrowException(v8::String::NewFromUtf8(
+        isolate, "Invalid argument. Expected number of bytes.").ToLocalChecked());
+    return;
+  }
+  
+  // 2. Safely extract the raw requested byte size
+  uint32_t num_bytes = args[0]->Uint32Value(context).FromMaybe(0);
+  if (num_bytes == 0) {
+    args.GetReturnValue().Set(v8::ArrayBuffer::New(isolate, 0));
+    return;
+  }
+
+  // 3. Allocate a raw, zero-initialized backing store managed by V8
+  std::unique_ptr<v8::BackingStore> backing_store = 
+      v8::ArrayBuffer::NewBackingStore(isolate, num_bytes, v8::InitializedFlag::kZeroInitialized);
+  
+  uint8_t* data = static_cast<uint8_t*>(backing_store->Data());
+
+  // 4. Read precisely 'num_bytes' from standard input stream (Descriptor 0)
+  size_t bytes_read = 0;
+  while (bytes_read < num_bytes) {
+    ssize_t result = read(STDIN_FILENO, data + bytes_read, num_bytes - bytes_read);
+    
+    if (result < 0) {
+      if (errno == EINTR) continue; // Retry if execution was paused by an OS signal
+      isolate->ThrowException(v8::String::NewFromUtf8(
+          isolate, "System error reading from stdin.").ToLocalChecked());
+      return;
+    }
+    
+    if (result == 0) {
+      // Stream EOF hit early (e.g. pipe closed) -> allocate truncated buffer and copy
+      std::unique_ptr<v8::BackingStore> truncated_store = 
+          v8::ArrayBuffer::NewBackingStore(isolate, bytes_read, v8::InitializedFlag::kZeroInitialized);
+      memcpy(truncated_store->Data(), data, bytes_read);
+      
+      v8::Local<v8::ArrayBuffer> truncated_buffer = 
+          v8::ArrayBuffer::New(isolate, std::move(truncated_store));
+      args.GetReturnValue().Set(truncated_buffer);
+      return;
+    }
+    
+    bytes_read += result;
+  }
+
+  // 5. Wrap the backing store inside a clean ArrayBuffer object and return it
+  v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing_store));
+  args.GetReturnValue().Set(buffer);
+}
+
+// Add readBytes and writeBytes for I/O (stdin, stdout)
+void Shell::WriteBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate* isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+
+  if (args.Length() < 1 || (!args[0]->IsArrayBuffer() && !args[0]->IsTypedArray())) {
+    isolate->ThrowException(v8::String::NewFromUtf8(
+        isolate, "Invalid argument. Expected ArrayBuffer or TypedArray.").ToLocalChecked());
+    return;
+  }
+
+  v8::Local<v8::ArrayBuffer> buffer;
+  size_t offset = 0;
+  size_t length = 0;
+
+  if (args[0]->IsTypedArray()) {
+    v8::Local<v8::TypedArray> typed_array = args[0].As<v8::TypedArray>();
+    buffer = typed_array->Buffer();
+    offset = typed_array->ByteOffset();
+    length = typed_array->ByteLength();
+  } else {
+    buffer = args[0].As<v8::ArrayBuffer>();
+    length = buffer->ByteLength();
+  }
+
+  if (length == 0) return;
+
+  std::shared_ptr<v8::BackingStore> backing_store = buffer->GetBackingStore();
+  const uint8_t* data = static_cast<const uint8_t*>(backing_store->Data()) + offset;
+
+  size_t bytes_written = 0;
+  while (bytes_written < length) {
+    ssize_t result = write(STDOUT_FILENO, data + bytes_written, length - bytes_written);
+    if (result < 0) {
+      if (errno == EINTR) continue;
+      isolate->ThrowException(v8::String::NewFromUtf8(
+          isolate, "Error writing to stdout.").ToLocalChecked());
+      return;
+    }
+    bytes_written += result;
+  }
+}
+
 
 void Shell::ReadLine(const v8::FunctionCallbackInfo<v8::Value>& info) {
   DCHECK(i::ValidateCallbackInfo(info));
