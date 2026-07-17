@@ -791,6 +791,8 @@ class Shell : public i::AllStatic {
   static void WriteChars(const char* name, uint8_t* buffer, size_t buffer_size);
   static void ExecuteFile(const v8::FunctionCallbackInfo<v8::Value>& info);
   static void FileExists(const v8::FunctionCallbackInfo<v8::Value>& info);
+  static void ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void WriteBytes(const v8::FunctionCallbackInfo<v8::Value>& args);
 #if defined(V8_OS_WIN)
   static void PreProcessUnicodeFilenameArg(char* argv[], int i);
   static void FreeUnicodeFilenameArgs();
