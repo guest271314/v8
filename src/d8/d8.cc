@@ -5744,13 +5744,13 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& info) {
 
   info.GetReturnValue().Set(buffer);
 }
-
+// Add ReadBytes, WriteBytes for binary I/O
 void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-  // 1. Validate that the first argument is an integer count
+  // 1. Validate the tracking arguments type safely
   if (args.Length() < 1 || !args[0]->IsUint32()) {
     isolate->ThrowException(v8::String::NewFromUtf8(
         isolate, "Invalid argument. Expected number of bytes.").ToLocalChecked());
@@ -5763,29 +5763,38 @@ void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
     return;
   }
 
-  // 2. Allocate an uninitialized backing storage area managed securely by V8
+  // 2. FIXED: Omit the 3rd argument to rely on V8's default zero-initialized mode
   std::unique_ptr<v8::BackingStore> backing_store = 
-      v8::ArrayBuffer::NewBackingStore(isolate, num_bytes, v8::InitializedFlag::kZeroInitialized);
+      v8::ArrayBuffer::NewBackingStore(isolate, num_bytes);
   
+  if (!backing_store) {
+    isolate->ThrowException(v8::String::NewFromUtf8(
+        isolate, "Failed to allocate memory backing store.").ToLocalChecked());
+    return;
+  }
+
   uint8_t* data = static_cast<uint8_t*>(backing_store->Data());
 
-  // 3. Read up to 'num_bytes' sequentially from STDIN_FILENO (fd 0)
+  // 3. Read loop processing standard input bytes sequentially
   size_t bytes_read = 0;
   while (bytes_read < num_bytes) {
     ssize_t result = read(STDIN_FILENO, data + bytes_read, num_bytes - bytes_read);
     
     if (result < 0) {
-      if (errno == EINTR) continue; // Retry if OS execution was interrupted
+      if (errno == EINTR) continue; // Retry if execution was paused by an OS signal
       isolate->ThrowException(v8::String::NewFromUtf8(
           isolate, "System error reading from stdin.").ToLocalChecked());
       return;
     }
     
     if (result == 0) {
-      // EOF / stream disconnected early. Wrap what we got and stop.
+      // Early EOF handling. Allocate a truncated backing store with the default parameters.
       std::unique_ptr<v8::BackingStore> truncated_store = 
-          v8::ArrayBuffer::NewBackingStore(isolate, bytes_read, v8::InitializedFlag::kZeroInitialized);
-      memcpy(truncated_store->Data(), data, bytes_read);
+          v8::ArrayBuffer::NewBackingStore(isolate, bytes_read);
+          
+      if (bytes_read > 0 && truncated_store) {
+        memcpy(truncated_store->Data(), data, bytes_read);
+      }
       
       v8::Local<v8::ArrayBuffer> truncated_buffer = 
           v8::ArrayBuffer::New(isolate, std::move(truncated_store));
@@ -5796,7 +5805,7 @@ void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
     bytes_read += result;
   }
 
-  // 4. Return the complete ArrayBuffer object directly to JavaScript
+  // 4. Return the complete ArrayBuffer object back down the VM stack
   v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing_store));
   args.GetReturnValue().Set(buffer);
 }
