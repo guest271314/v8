@@ -5745,46 +5745,44 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& info) {
   info.GetReturnValue().Set(buffer);
 }
 
-// Add readBytes and writeBytes for I/O (stdin, stdout)
 void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-  // 1. Ensure at least one argument was passed and that it can be parsed as a 32-bit Integer
+  // 1. Validate that the first argument is an integer count
   if (args.Length() < 1 || !args[0]->IsUint32()) {
     isolate->ThrowException(v8::String::NewFromUtf8(
         isolate, "Invalid argument. Expected number of bytes.").ToLocalChecked());
     return;
   }
   
-  // 2. Safely extract the raw requested byte size
   uint32_t num_bytes = args[0]->Uint32Value(context).FromMaybe(0);
   if (num_bytes == 0) {
     args.GetReturnValue().Set(v8::ArrayBuffer::New(isolate, 0));
     return;
   }
 
-  // 3. Allocate a raw, zero-initialized backing store managed by V8
+  // 2. Allocate an uninitialized backing storage area managed securely by V8
   std::unique_ptr<v8::BackingStore> backing_store = 
       v8::ArrayBuffer::NewBackingStore(isolate, num_bytes, v8::InitializedFlag::kZeroInitialized);
   
   uint8_t* data = static_cast<uint8_t*>(backing_store->Data());
 
-  // 4. Read precisely 'num_bytes' from standard input stream (Descriptor 0)
+  // 3. Read up to 'num_bytes' sequentially from STDIN_FILENO (fd 0)
   size_t bytes_read = 0;
   while (bytes_read < num_bytes) {
     ssize_t result = read(STDIN_FILENO, data + bytes_read, num_bytes - bytes_read);
     
     if (result < 0) {
-      if (errno == EINTR) continue; // Retry if execution was paused by an OS signal
+      if (errno == EINTR) continue; // Retry if OS execution was interrupted
       isolate->ThrowException(v8::String::NewFromUtf8(
           isolate, "System error reading from stdin.").ToLocalChecked());
       return;
     }
     
     if (result == 0) {
-      // Stream EOF hit early (e.g. pipe closed) -> allocate truncated buffer and copy
+      // EOF / stream disconnected early. Wrap what we got and stop.
       std::unique_ptr<v8::BackingStore> truncated_store = 
           v8::ArrayBuffer::NewBackingStore(isolate, bytes_read, v8::InitializedFlag::kZeroInitialized);
       memcpy(truncated_store->Data(), data, bytes_read);
@@ -5798,12 +5796,11 @@ void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
     bytes_read += result;
   }
 
-  // 5. Wrap the backing store inside a clean ArrayBuffer object and return it
+  // 4. Return the complete ArrayBuffer object directly to JavaScript
   v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing_store));
   args.GetReturnValue().Set(buffer);
 }
 
-// Add readBytes and writeBytes for I/O (stdin, stdout)
 void Shell::WriteBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
@@ -5833,6 +5830,7 @@ void Shell::WriteBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   std::shared_ptr<v8::BackingStore> backing_store = buffer->GetBackingStore();
   const uint8_t* data = static_cast<const uint8_t*>(backing_store->Data()) + offset;
 
+  // Stream write straight out to STDOUT_FILENO (fd 1)
   size_t bytes_written = 0;
   while (bytes_written < length) {
     ssize_t result = write(STDOUT_FILENO, data + bytes_written, length - bytes_written);
@@ -5845,7 +5843,6 @@ void Shell::WriteBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
     bytes_written += result;
   }
 }
-
 
 void Shell::ReadLine(const v8::FunctionCallbackInfo<v8::Value>& info) {
   DCHECK(i::ValidateCallbackInfo(info));
