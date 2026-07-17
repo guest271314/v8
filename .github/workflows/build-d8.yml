@@ -1,4 +1,4 @@
-name: Build V8 d8 Shell (With Caching)
+name: Build V8 d8 Shell (For V8 Forks)
 
 on:
   push:
@@ -26,22 +26,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git python3 curl xz-utils pkg-config ccache
 
+      # Check out your fork repository directly into a directory named 'v8'
+      - name: Checkout V8 Fork Source
+        uses: actions/checkout@v4
+        with:
+          path: v8
+
       - name: Install Google Depot Tools
         run: |
           git clone https://googlesource.com
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
 
-      # Cache the source download to skip downloading ~15GB on every run
-      - name: Cache V8 Source Code
-        id: cache-v8
-        uses: actions/cache@v4
-        with:
-          path: v8
-          key: v8-source-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            v8-source-${{ runner.os }}-
-
-      # Cache the C++ object compilation steps 
       - name: Cache Ccache Compiler Objects
         uses: actions/cache@v4
         with:
@@ -50,18 +45,17 @@ jobs:
           restore-keys: |
             v8-ccache-${{ runner.os }}-
 
-      - name: Fetch or Sync V8 Source Code
+      # This configures gclient to recognize your checked-out directory as the target
+      - name: Configure Gclient and Sync Dependencies
         run: |
           export PATH="$(pwd)/depot_tools:$PATH"
           
-          # If the cache missed completely, download from scratch
-          if [ "${{ steps.cache-v8.outputs.cache-hit }}" != "true" ]; then
-            fetch --no-history v8
-          fi
+          # Initialize gclient configuration manually for the existing V8 directory
+          gclient config --spec 'solutions = [{ "name": "v8", "url": "https://github.com{{ github.repository }}.git", "deps_file": "DEPS", "managed": False }]'
           
           cd v8
-          # Sync files and force-update hooks to ensure everything is aligned
-          gclient sync --force --noprehooks
+          # Fetch heavy third-party dependencies required for building
+          gclient sync --force --no-history --noprehooks
           gclient runhooks
 
       - name: Install V8 Build Dependencies
@@ -74,7 +68,6 @@ jobs:
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          # Enabled cc_wrapper for ccache to match compiled objects
           gn gen out/x64.release --args='
             is_debug=false 
             target_cpu="x64" 
@@ -95,9 +88,9 @@ jobs:
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          ccache -z # Reset ccache statistics
+          ccache -z
           ninja -C out/x64.release d8
-          ccache -s # Show cache performance stats
+          ccache -s
 
       - name: Upload d8 Binary Artifact
         uses: actions/upload-artifact@v4
