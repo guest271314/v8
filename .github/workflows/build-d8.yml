@@ -26,15 +26,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git python3 curl xz-utils pkg-config ccache
 
-      # Check out your fork repository directly into a directory named 'v8'
+      # Check out your fork repository into a sub-folder named 'v8'
       - name: Checkout V8 Fork Source
         uses: actions/checkout@v4
         with:
           path: v8
 
+      # The absolute repository URL for Google's build scripts
       - name: Install Google Depot Tools
         run: |
-          git clone https://googlesource.com
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
 
       - name: Cache Ccache Compiler Objects
@@ -45,23 +46,23 @@ jobs:
           restore-keys: |
             v8-ccache-${{ runner.os }}-
 
-      # This configures gclient to recognize your checked-out directory as the target
+      # This informs gclient that the local 'v8' directory belongs to your GitHub fork
       - name: Configure Gclient and Sync Dependencies
         run: |
           export PATH="$(pwd)/depot_tools:$PATH"
           
-          # Initialize gclient configuration manually for the existing V8 directory
+          # Initialize gclient targeting your fork repository layout
           gclient config --spec 'solutions = [{ "name": "v8", "url": "https://github.com{{ github.repository }}.git", "deps_file": "DEPS", "managed": False }]'
           
           cd v8
-          # Fetch heavy third-party dependencies required for building
+          # Pull the underlying build toolchains, skipping deep history to avoid timeouts
           gclient sync --force --no-history --noprehooks
           gclient runhooks
 
       - name: Install V8 Build Dependencies
         run: |
           cd v8
-          export DEBIAN_FRONTEND=noninteractive
+          export DEABIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
 
       - name: Generate GN Build Configurations
