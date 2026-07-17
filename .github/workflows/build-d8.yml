@@ -1,0 +1,108 @@
+name: Build V8 d8 Shell (With Caching)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build_d8:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Maximize Disk Space
+        run: |
+          echo "Cleaning up runner disk space..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 curl xz-utils pkg-config ccache
+
+      - name: Install Google Depot Tools
+        run: |
+          git clone https://googlesource.com
+          echo "$(pwd)/depot_tools" >> $GITHUB_PATH
+
+      # Cache the source download to skip downloading ~15GB on every run
+      - name: Cache V8 Source Code
+        id: cache-v8
+        uses: actions/cache@v4
+        with:
+          path: v8
+          key: v8-source-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            v8-source-${{ runner.os }}-
+
+      # Cache the C++ object compilation steps 
+      - name: Cache Ccache Compiler Objects
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: v8-ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            v8-ccache-${{ runner.os }}-
+
+      - name: Fetch or Sync V8 Source Code
+        run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
+          
+          # If the cache missed completely, download from scratch
+          if [ "${{ steps.cache-v8.outputs.cache-hit }}" != "true" ]; then
+            fetch --no-history v8
+          fi
+          
+          cd v8
+          # Sync files and force-update hooks to ensure everything is aligned
+          gclient sync --force --noprehooks
+          gclient runhooks
+
+      - name: Install V8 Build Dependencies
+        run: |
+          cd v8
+          export DEBIAN_FRONTEND=noninteractive
+          sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
+
+      - name: Generate GN Build Configurations
+        run: |
+          cd v8
+          export PATH="$(pwd)/../depot_tools:$PATH"
+          # Enabled cc_wrapper for ccache to match compiled objects
+          gn gen out/x64.release --args='
+            is_debug=false 
+            target_cpu="x64" 
+            v8_monolithic=false 
+            is_component_build=false 
+            v8_use_external_startup_data=false 
+            symbols_include_type="none" 
+            blink_symbol_level=0 
+            v8_symbol_level=0
+            v8_enable_future_features=true
+            v8_enable_webassembly=true
+            v8_enable_wasm_gdb_remote_support=true
+            v8_enable_experimental_regexp_engine=true
+            cc_wrapper="ccache"
+          '
+
+      - name: Compile d8 Shell
+        run: |
+          cd v8
+          export PATH="$(pwd)/../depot_tools:$PATH"
+          ccache -z # Reset ccache statistics
+          ninja -C out/x64.release d8
+          ccache -s # Show cache performance stats
+
+      - name: Upload d8 Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: d8-linux-x64-experimental
+          path: |
+            v8/out/x64.release/d8
+            v8/out/x64.release/icudtl.dat
