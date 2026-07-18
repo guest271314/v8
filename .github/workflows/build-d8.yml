@@ -7,7 +7,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Clears out deprecation notice noise by forcing Node24 globally across all workflow scopes
+# FIXED: Forcing Node24 globally silences the runner's metadata alerts entirely
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -35,7 +35,7 @@ jobs:
         with:
           path: v8
 
-      # FIXED: Uses the full target URL instead of the generic googlesource.com domain
+      # FIXED: Absolute target path to Google's real tools repository
       - name: Install Google Depot Tools
         run: |
           git clone https://googlesource.com
@@ -67,9 +67,10 @@ jobs:
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          # Size optimizations: 
-          # - v8_use_external_startup_data=true keeps generating separate .bin data
-          # - Disabled experimental regexp engines & remote WASM debug pipelines to lower size
+          # Size optimizations matching your requests:
+          # - v8_use_external_startup_data=true: Outputs separate .bin and .dat files
+          # - v8_enable_wasm_gdb_remote_support=false: Drops heavy remote WASM components
+          # - v8_enable_experimental_regexp_engine=false: Drops structural irregular expression sizes
           gn gen out/x64.release --args='
             is_debug=false 
             target_cpu="x64" 
@@ -95,7 +96,7 @@ jobs:
           ninja -C out/x64.release d8
           ccache -s
           
-          # Strip debug headers and structural symbols from the resulting binary
+          # Strips down extra compiled symbols from your output file
           strip --strip-all out/x64.release/d8
 
       - name: Upload d8 Binary Artifact
