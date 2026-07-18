@@ -1,4 +1,4 @@
-name: Build V8 d8 Shell (For V8 Forks)
+name: Build V8 d8 Shell (Optimized & Clean)
 
 on:
   push:
@@ -26,63 +26,63 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git python3 curl xz-utils pkg-config ccache
 
-      # Check out your fork repository into a sub-folder named 'v8'
+      # Fixed Warning: Using actions/checkout@v4 but explicitly passing the Node24 flag
       - name: Checkout V8 Fork Source
         uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
         with:
           path: v8
 
-      # The absolute repository URL for Google's build scripts
       - name: Install Google Depot Tools
         run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          git clone https://googlesource.com
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
 
+      # Fixed Warning: Passing Node24 environment flag to cache action
       - name: Cache Ccache Compiler Objects
         uses: actions/cache@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
         with:
           path: ~/.cache/ccache
           key: v8-ccache-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             v8-ccache-${{ runner.os }}-
 
-      # This informs gclient that the local 'v8' directory belongs to your GitHub fork
       - name: Configure Gclient and Sync Dependencies
         run: |
           export PATH="$(pwd)/depot_tools:$PATH"
-          
-          # Initialize gclient targeting your fork repository layout
           gclient config --spec 'solutions = [{ "name": "v8", "url": "https://github.com{{ github.repository }}.git", "deps_file": "DEPS", "managed": False }]'
-          
           cd v8
-          # Pull the underlying build toolchains, skipping deep history to avoid timeouts
           gclient sync --force --no-history --noprehooks
           gclient runhooks
 
       - name: Install V8 Build Dependencies
         run: |
           cd v8
-          export DEABIAN_FRONTEND=noninteractive
+          export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
 
       - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
+          # Size reductions: Disabled experimental engines, stripped symbols, enabled external snapshots
           gn gen out/x64.release --args='
             is_debug=false 
             target_cpu="x64" 
             v8_monolithic=false 
             is_component_build=false 
-            v8_use_external_startup_data=false 
             symbols_include_type="none" 
             blink_symbol_level=0 
             v8_symbol_level=0
             v8_enable_future_features=true
             v8_enable_webassembly=true
-            v8_enable_wasm_gdb_remote_support=true
-            v8_enable_experimental_regexp_engine=true
-            v8_enable_embedded_builtins=false
+            v8_use_external_startup_data=true
+            v8_enable_wasm_gdb_remote_support=false
+            v8_enable_experimental_regexp_engine=false
+            v8_enable_embedded_builtins=true
             cc_wrapper="ccache"
           '
 
@@ -93,11 +93,18 @@ jobs:
           ccache -z
           ninja -C out/x64.release d8
           ccache -s
+          
+          # Compress binary further via GNU strip
+          strip out/x64.release/d8
 
+      # Fixed Warning: Passing Node24 environment flag to upload action
       - name: Upload d8 Binary Artifact
         uses: actions/upload-artifact@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
         with:
-          name: d8-linux-x64-experimental
+          name: d8-linux-x64-optimized
           path: |
             v8/out/x64.release/d8
+            v8/out/x64.release/snapshot_blob.bin
             v8/out/x64.release/icudtl.dat
