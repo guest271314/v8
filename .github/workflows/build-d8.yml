@@ -34,10 +34,9 @@ jobs:
         with:
           path: v8
 
-      # FIXED ACTIONABLE STEP: Explicit target destination to prevent root 404 domain drops
       - name: Install Google Depot Tools
         run: |
-          git clone https://googlesource.com
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
 
       - name: Cache Ccache Compiler Objects
