@@ -4755,14 +4755,14 @@ Local<ObjectTemplate> Shell::CreateGlobalTemplate(Isolate* isolate) {
   global_template->Set(isolate, "performance",
                        Shell::CreatePerformanceTemplate(isolate));
   global_template->Set(isolate, "Worker", Shell::CreateWorkerTemplate(isolate));
-  // Add readBytes and writeBytes for I/O (stdin, stdout)
+  // Add readStdinBytes and writeStdoutBytes for I/O (stdin, stdout)
   global_template->Set(
-    isolate, "readBytes",
-    v8::FunctionTemplate::New(isolate, Shell::ReadBytes));
-  // Add readBytes and writeBytes for I/O (stdin, stdout)
+    isolate, "readStdinBytes",
+    v8::FunctionTemplate::New(isolate, Shell::ReadStdinBytes));
+  // Add readStdinBytes and writeStdoutBytes for I/O (stdin, stdout)
   global_template->Set(
-    isolate, "writeBytes",
-    v8::FunctionTemplate::New(isolate, Shell::WriteBytes));
+    isolate, "writeStdoutBytes",
+    v8::FunctionTemplate::New(isolate, Shell::WriteStdoutBytes));
   // Prevent fuzzers from creating side effects.
   if (!i::v8_flags.fuzzing) {
     global_template->Set(isolate, "os", Shell::CreateOSTemplate(isolate));
@@ -5744,8 +5744,8 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& info) {
 
   info.GetReturnValue().Set(buffer);
 }
-// Add ReadBytes, WriteBytes for binary I/O
-void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
+// Add ReadStdinBytes, WriteStdoutBytes for binary I/O
+void Shell::ReadStdinBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
@@ -5809,8 +5809,8 @@ void Shell::ReadBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing_store));
   args.GetReturnValue().Set(buffer);
 }
-
-void Shell::WriteBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
+// Add ReadStdinBytes, WriteStdoutBytes for binary I/O
+void Shell::WriteStdoutBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
