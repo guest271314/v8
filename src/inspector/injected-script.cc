@@ -244,6 +244,7 @@ class InjectedScript::ProtocolPromiseHandler {
     V8InspectorSessionImpl* session =
         m_inspector->sessionById(m_contextGroupId, m_sessionId);
     if (!session) return;
+    V8InspectorSessionImpl::KeepSessionAliveScope keepAlive(*session);
     InjectedScript::ContextScope scope(session, m_executionContextId);
     Response response = scope.initialize();
     if (!response.IsSuccess()) return;
@@ -291,6 +292,7 @@ class InjectedScript::ProtocolPromiseHandler {
     V8InspectorSessionImpl* session =
         m_inspector->sessionById(m_contextGroupId, m_sessionId);
     if (!session) return;
+    V8InspectorSessionImpl::KeepSessionAliveScope keepAlive(*session);
     InjectedScript::ContextScope scope(session, m_executionContextId);
     Response response = scope.initialize();
     if (!response.IsSuccess()) return;
@@ -637,7 +639,12 @@ Response InjectedScript::wrapObjectMirror(
   response = bindRemoteObjectIfNeeded(sessionId, context, value, groupName,
                                       result->get());
   if (!response.IsSuccess()) return response;
-  if (customPreviewEnabled && value->IsObject()) {
+  // Only perform custom previews if either preview is requested or we're
+  // already being recursively called from generateCustomPreview() (via
+  // substituteObjectTags()).
+  if (customPreviewEnabled && value->IsObject() &&
+      (wrapOptions.mode == WrapMode::kPreview ||
+       !customPreviewConfig.IsEmpty())) {
     std::unique_ptr<protocol::Runtime::CustomPreview> customPreview;
     generateCustomPreview(m_context->isolate(), sessionId, groupName,
                           value.As<v8::Object>(), customPreviewConfig,

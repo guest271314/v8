@@ -1,7 +1,5 @@
 include_rules = [
   "+src",
-  "-src/asmjs",
-  "+src/asmjs/asm-js.h",
   "-src/baseline",
   "+src/baseline/baseline.h",
   "+src/baseline/baseline-batch-compiler.h",
@@ -152,5 +150,11 @@ specific_include_rules = {
   "heap-snapshot-generator\.cc": [
     "+src/heap/cppgc-js/cpp-heap.h",
     "+src/heap/cppgc-js/cpp-snapshot.h",
+  ],
+  "generated-code-validator-arm64\.cc": [
+    "+third_party/disarm/src/disarm64.h",
+  ],
+  "generated-code-validator-x64\.cc": [
+    "+third_party/fadec/src/fadec.h",
   ],
 }

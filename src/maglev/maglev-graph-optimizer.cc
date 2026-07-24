@@ -770,19 +770,6 @@ ProcessResult MaglevGraphOptimizer::ProcessLoadContextSlot(NodeT* node) {
   return ProcessResult::kContinue;
 }
 
-MaybeReduceResult MaglevGraphOptimizer::EnsureType(ValueNode* node,
-                                                   NodeType type,
-                                                   DeoptimizeReason reason) {
-  if (IsEmptyNodeType(IntersectType(reducer_.GetType(node), type))) {
-    return reducer_.EmitUnconditionalDeopt(reason);
-  }
-  if (!reducer_.EnsureType(node, type)) {
-    return {};
-  }
-
-  return ReduceResult::Done();
-}
-
 ProcessResult MaglevGraphOptimizer::VisitAssertInt32(
     AssertInt32* node, const ProcessingState& state) {
   return ProcessResult::kContinue;
@@ -865,7 +852,7 @@ ProcessResult MaglevGraphOptimizer::VisitCheckHoleyFloat64IsSmi(
 
 ProcessResult MaglevGraphOptimizer::VisitCheckHeapObject(
     CheckHeapObject* node, const ProcessingState& state) {
-  REMOVE_AND_RETURN_IF_DONE(EnsureType(
+  REMOVE_AND_RETURN_IF_DONE(reducer_.EnsureType(
       node->input_node(0), NodeType::kAnyHeapObject, DeoptimizeReason::kSmi));
   return ProcessResult::kContinue;
 }
@@ -946,7 +933,9 @@ ProcessResult MaglevGraphOptimizer::ProcessCheckMaps(NodeT* node,
     node->set_check_type(reducer_.GetCheckType(known_info->type()));
   }
 
-  merger.UpdateKnownNodeAspects(object, known_node_aspects());
+  if (!merger.UpdateKnownNodeAspects(object, known_node_aspects())) {
+    return DeoptAndTruncate(DeoptimizeReason::kWrongValue);
+  }
   return ProcessResult::kContinue;
 }
 
@@ -984,8 +973,9 @@ ProcessResult MaglevGraphOptimizer::VisitCheckDetectableCallable(
 ProcessResult MaglevGraphOptimizer::VisitCheckJSReceiverOrNullOrUndefined(
     CheckJSReceiverOrNullOrUndefined* node, const ProcessingState& state) {
   ValueNode* input = node->input_node(0);
-  REMOVE_AND_RETURN_IF_DONE(
-      EnsureType(input, NodeType::kJSReceiverOrNullOrUndefined));
+  REMOVE_AND_RETURN_IF_DONE(reducer_.EnsureType(
+      input, NodeType::kJSReceiverOrNullOrUndefined,
+      DeoptimizeReason::kNotAJavaScriptObjectOrNullOrUndefined));
   return ProcessResult::kContinue;
 }
 
@@ -1089,8 +1079,8 @@ ProcessResult MaglevGraphOptimizer::VisitCheckInstanceType(
 
   if (node->first_instance_type() == FIRST_JS_RECEIVER_TYPE &&
       node->last_instance_type() == LAST_JS_RECEIVER_TYPE) {
-    REMOVE_AND_RETURN_IF_DONE(EnsureType(input, NodeType::kJSReceiver,
-                                         DeoptimizeReason::kWrongInstanceType));
+    REMOVE_AND_RETURN_IF_DONE(reducer_.EnsureType(
+        input, NodeType::kJSReceiver, DeoptimizeReason::kWrongInstanceType));
   }
 
   return ProcessResult::kContinue;
@@ -1537,9 +1527,6 @@ ProcessResult MaglevGraphOptimizer::VisitCall(Call* node,
     current_unit =
         &new_call_node->lazy_deopt_info()->top_frame().GetCompilationUnit();
   }
-  if (!reducer_.CanInlineCall(current_unit, shared, call_frequency)) {
-    return ReplaceWith(new_call_node);
-  }
 
   // Create and push MaglevCallSiteInfo
   // TODO(victorgomes): Investigate if we can avoid this copy.
@@ -1548,6 +1535,11 @@ ProcessResult MaglevGraphOptimizer::VisitCall(Call* node,
   arguments[0] = converted_receiver;
   for (int i = 1; i < node->num_args(); ++i) {
     arguments[i] = node->arg(i).node();
+  }
+
+  if (!reducer_.CanInlineCall(current_unit, shared, call_frequency, arguments,
+                              new_call_node->use_repr_hints())) {
+    return ReplaceWith(new_call_node);
   }
 
   CatchBlockDetails catch_details;
@@ -1669,7 +1661,9 @@ ProcessResult MaglevGraphOptimizer::VisitCallKnownJSFunction(
       node->shared_function_info().object()->construct_as_builtin()) {
     // The invariant of such builtin targets is that the return value is a
     // JSReceiver. Set the type accordingly here.
-    known_node_aspects().EnsureType(broker(), node, NodeType::kJSReceiver);
+    CHECK_NE(
+        known_node_aspects().EnsureType(broker(), node, NodeType::kJSReceiver),
+        EnsureTypeResult::kContradiction);
   }
   return ProcessResult::kContinue;
 }
@@ -1855,8 +1849,12 @@ ProcessResult MaglevGraphOptimizer::VisitGetTemplateObject(
 
 ProcessResult MaglevGraphOptimizer::VisitHasInPrototypeChain(
     HasInPrototypeChain* node, const ProcessingState& state) {
-  REPLACE_AND_RETURN_IF_DONE(reducer_.TryBuildFastHasInPrototypeChain(
-      node->input_node(0), node->prototype()));
+  if (compiler::OptionalHeapObjectRef prototype =
+          reducer_.TryGetConstant<HeapObject>(
+              node->input_node(HasInPrototypeChain::kPrototypeIndex))) {
+    REPLACE_AND_RETURN_IF_DONE(reducer_.TryBuildFastHasInPrototypeChain(
+        node->input_node(HasInPrototypeChain::kObjectIndex), *prototype));
+  }
   return ProcessResult::kContinue;
 }
 
@@ -2148,6 +2146,11 @@ ProcessResult MaglevGraphOptimizer::VisitCheckedSmiSizedInt32(
   if (auto cst = reducer_.TryGetInt32Constant(node->input_node(0))) {
     if (Smi::IsValid(cst.value())) {
       return ReplaceWith(reducer_.GetInt32Constant(cst.value()));
+    }
+  }
+  if (auto range = GetRange(node->input_node(0))) {
+    if (Range::Smi().contains(*range)) {
+      return ReplaceWith(node->input_node(0));
     }
   }
   return ProcessResult::kContinue;
@@ -2486,14 +2489,6 @@ ProcessResult MaglevGraphOptimizer::VisitCheckedSmiTagHoleyFloat64(
   return ProcessResult::kContinue;
 }
 
-ProcessResult MaglevGraphOptimizer::VisitCheckedNumberOrOddballToHoleyFloat64(
-    CheckedNumberOrOddballToHoleyFloat64* node, const ProcessingState& state) {
-  REPLACE_AND_RETURN_IF_DONE(GetUntaggedValueWithRepresentation(
-      node->input_node(0), UseRepresentation::kHoleyFloat64,
-      node->conversion_type()));
-  return ProcessResult::kContinue;
-}
-
 #define UNTAGGING_CASE(Node, Repr, ConvType)                         \
   ProcessResult MaglevGraphOptimizer::Visit##Node(                   \
       Node* node, const ProcessingState& state) {                    \
@@ -2503,11 +2498,7 @@ ProcessResult MaglevGraphOptimizer::VisitCheckedNumberOrOddballToHoleyFloat64(
   }
 UNTAGGING_CASE(UnsafeSmiUntag, Int32, {})
 UNTAGGING_CASE(CheckedNumberToInt32, Int32, {})
-UNTAGGING_CASE(TruncateCheckedNumberOrOddballToInt32, TruncatedInt32,
-               node->conversion_type())
 UNTAGGING_CASE(TruncateUnsafeNumberOrOddballToInt32, TruncatedInt32,
-               node->conversion_type())
-UNTAGGING_CASE(CheckedNumberOrOddballToFloat64, Float64,
                node->conversion_type())
 UNTAGGING_CASE(UnsafeNumberOrOddballToFloat64, Float64, node->conversion_type())
 UNTAGGING_CASE(UnsafeNumberToFloat64, Float64,
@@ -2515,6 +2506,30 @@ UNTAGGING_CASE(UnsafeNumberToFloat64, Float64,
 UNTAGGING_CASE(UnsafeNumberOrOddballToHoleyFloat64, HoleyFloat64,
                node->conversion_type())
 #undef UNTAGGING_CASE
+
+// Checked tagged-input conversions whose check is already implied by the known
+// type of their input are downgraded in-place to their unsafe equivalent.
+#define DOWNGRADABLE_UNTAGGING_CASE(Node, UnsafeNode, Repr, ConvType)     \
+  ProcessResult MaglevGraphOptimizer::Visit##Node(                        \
+      Node* node, const ProcessingState& state) {                         \
+    REPLACE_AND_RETURN_IF_DONE(GetUntaggedValueWithRepresentation(        \
+        node->input_node(0), UseRepresentation::k##Repr, ConvType));      \
+    if (reducer_.CheckType(node->input_node(0),                           \
+                           GetAllowedTypeFromConversionType(ConvType))) { \
+      node->OverwriteWith(Opcode::k##UnsafeNode);                         \
+    }                                                                     \
+    return ProcessResult::kContinue;                                      \
+  }
+DOWNGRADABLE_UNTAGGING_CASE(TruncateCheckedNumberOrOddballToInt32,
+                            TruncateUnsafeNumberOrOddballToInt32,
+                            TruncatedInt32, node->conversion_type())
+DOWNGRADABLE_UNTAGGING_CASE(CheckedNumberOrOddballToFloat64,
+                            UnsafeNumberOrOddballToFloat64, Float64,
+                            node->conversion_type())
+DOWNGRADABLE_UNTAGGING_CASE(CheckedNumberOrOddballToHoleyFloat64,
+                            UnsafeNumberOrOddballToHoleyFloat64, HoleyFloat64,
+                            node->conversion_type())
+#undef DOWNGRADABLE_UNTAGGING_CASE
 
 ProcessResult MaglevGraphOptimizer::VisitCheckedSmiUntag(
     CheckedSmiUntag* node, const ProcessingState& state) {
@@ -2552,6 +2567,9 @@ ProcessResult MaglevGraphOptimizer::VisitCheckedSmiUntag(
   //   return ProcessResult::kTruncateBlock;
   // }
   // DCHECK(maybe_input.IsFail());
+  if (reducer_.CheckType(node->input_node(0), NodeType::kSmi)) {
+    node->OverwriteWith(Opcode::kUnsafeSmiUntag);
+  }
   return ProcessResult::kContinue;
 }
 
@@ -2562,18 +2580,19 @@ ProcessResult MaglevGraphOptimizer::VisitCheckedNumberToFloat64(
       TaggedToFloat64ConversionType::kOnlyNumber);
   if (maybe_alt.IsDoneWithValue()) {
     ValueNode* alt = maybe_alt.value();
-    if (alt->Is<CheckedNumberOrOddballToFloat64>() ||
-        alt->Is<UnsafeNumberOrOddballToFloat64>()) {
-      // The alternative check is weaker then the current node. We should not
-      // elide it.
-      // TODO(victorgomes): consider having a to_number alternative?
-      return ProcessResult::kContinue;
+    // If the alternative check is weaker then the current node, then
+    // we should not elide it.
+    // TODO(victorgomes): consider having a to_number alternative?
+    if (!alt->Is<CheckedNumberOrOddballToFloat64>() &&
+        !alt->Is<UnsafeNumberOrOddballToFloat64>()) {
+      return ReplaceWith(alt);
     }
-    return ReplaceWith(alt);
   } else if (maybe_alt.IsDoneWithAbort()) {
     return ProcessResult::kTruncateBlock;
   }
-  DCHECK(maybe_alt.IsFail());
+  if (reducer_.CheckType(node->input_node(0), NodeType::kNumber)) {
+    node->OverwriteWith(Opcode::kUnsafeNumberToFloat64);
+  }
   return ProcessResult::kContinue;
 }
 
@@ -3759,6 +3778,9 @@ ProcessResult MaglevGraphOptimizer::VisitTruncateCheckedNumberAsSafeIntToInt32(
   // TODO(b/424157317): Optimize.
   if (node->input_node(0)->Is<Int32ToNumber>()) {
     return ReplaceWith(node->input_node(0)->input_node(0));
+  }
+  if (reducer_.CheckType(node->input_node(0), NodeType::kNumber)) {
+    node->OverwriteWith(Opcode::kTruncateUnsafeNumberAsSafeIntToInt32);
   }
   return ProcessResult::kContinue;
 }

@@ -720,12 +720,12 @@ void InitInstructionTableOnce(Isolate* isolate) {
 WasmInterpreter::WasmInterpreter(
     Isolate* isolate, const WasmModule* module,
     const ModuleWireBytes& wire_bytes,
-    DirectHandle<WasmInstanceObject> instance_object)
+    DirectHandle<WasmTrustedInstanceData> trusted_data)
     : zone_(isolate->allocator(), ZONE_NAME),
       module_bytes_(wire_bytes.start(), wire_bytes.end(), &zone_),
       codemap_(isolate, module, module_bytes_.data(), &zone_) {
   wasm_runtime_ = std::make_shared<WasmInterpreterRuntime>(
-      module, isolate, instance_object, &codemap_);
+      module, isolate, trusted_data, &codemap_);
   module->SetWasmInterpreter(wasm_runtime_);
 
 #if !defined(V8_DRUMBRAKE_BOUNDS_CHECKS)
@@ -8003,7 +8003,6 @@ uint32_t WasmBytecodeGenerator::ScanConstInstructions() {
   const FunctionSig* sig = wasm_code_->function->sig;
   WasmDecoder<Decoder::NoValidationTag> decoder(
       &zone, module_, WasmEnabledFeatures::All(), &detected, sig,
-      SharedFlag{false},  // is_shared
       wasm_code_->start, wasm_code_->end);
 
   const uint8_t* pc = wasm_code_->start + wasm_code_->locals.encoded_size;
@@ -9439,24 +9438,6 @@ bool WasmBytecodeGenerator::HasSideEffects(WasmOpcode opcode) {
     case kExprNopForTestingUnsupportedInLiftoff:
     case kExprTryTable:
     case kExprThrowRef:
-    case kExprF64Acos:
-    case kExprF64Asin:
-    case kExprF64Atan:
-    case kExprF64Atan2:
-    case kExprF64Cos:
-    case kExprF64Sin:
-    case kExprF64Tan:
-    case kExprF64Exp:
-    case kExprF64Log:
-    case kExprF64Pow:  // 0xdc - 0xe6
-    case kExprI32AsmjsDivS:
-    case kExprI32AsmjsDivU:
-    case kExprI32AsmjsRemS:
-    case kExprI32AsmjsRemU:
-    case kExprI32AsmjsSConvertF32:
-    case kExprI32AsmjsUConvertF32:
-    case kExprI32AsmjsSConvertF64:
-    case kExprI32AsmjsUConvertF64:  // 0xe7 - 0xfa
     case kExprRefCastNop:
 
     // StringRef

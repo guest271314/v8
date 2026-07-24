@@ -3480,13 +3480,10 @@ class AssemblerOpInterface : public Next {
   // provided; the return value is the potentially-updated value.
   // Returns a V<Tuple<WordPtr, WordPtr>> when *both* {memory_start} and
   // {memory_size} are provided.
-  V<AnyOrNone> WasmStackCheck(
+  V<None> WasmStackCheck(
       WasmStackCheckOp::Kind kind,
-      OptionalV<WasmTrustedInstanceData> trusted_instance_data = {},
-      OptionalV<WordPtr> memory_start = {},
-      OptionalV<WordPtr> memory_size = {}) {
-    return ReduceIfReachableWasmStackCheck(trusted_instance_data, memory_start,
-                                           memory_size, kind);
+      OptionalV<WasmTrustedInstanceData> trusted_instance_data = {}) {
+    return ReduceIfReachableWasmStackCheck(trusted_instance_data, kind);
   }
 
   void MemoryCopy(V<WordPtr> dst_base, V<WordPtr> src_base,
@@ -4613,13 +4610,14 @@ class AssemblerOpInterface : public Next {
     return ReduceIfReachableLoadFieldByIndex(object, index);
   }
 
-  V<Object> LoadDictionaryField(V<JSReceiver> object, V<Context> context,
-                                V<LazyFrameState> fs, size_t index,
-                                compiler::NameRef name,
-                                const FeedbackSource& feedback,
+  V<Object> LoadDictionaryField(V<JSReceiver> object, V<Object> receiver,
+                                V<Context> context, V<LazyFrameState> fs,
+                                size_t index, compiler::NameRef name,
+                                const FeedbackSource& feedback, bool is_super,
                                 LazyDeoptOnThrow lazy_deopt_on_throw) {
-    return ReduceIfReachableLoadDictionaryField(
-        object, context, fs, index, name, feedback, lazy_deopt_on_throw);
+    return ReduceIfReachableLoadDictionaryField(object, receiver, context, fs,
+                                                index, name, feedback, is_super,
+                                                lazy_deopt_on_throw);
   }
 
   void DebugBreak() { ReduceIfReachableDebugBreak(); }

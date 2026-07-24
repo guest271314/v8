@@ -812,8 +812,7 @@ bool Heap::CreateLateReadOnlyNonJSReceiverMaps() {
 
     IF_WASM(ALLOCATE_MAP, WASM_IMPORT_DATA_TYPE, WasmImportData::kSize,
             wasm_import_data)
-    IF_WASM(ALLOCATE_MAP, ASM_WASM_DATA_TYPE, sizeof(AsmWasmData),
-            asm_wasm_data)
+
     IF_WASM(ALLOCATE_MAP, WASM_CAPI_FUNCTION_DATA_TYPE,
             WasmCapiFunctionData::kSize, wasm_capi_function_data)
     IF_WASM(ALLOCATE_MAP, WASM_EXPORTED_FUNCTION_DATA_TYPE,
@@ -1773,8 +1772,8 @@ void Heap::CreateInitialMutableObjects() {
     set_empty_protected_weak_fixed_array(
         *ProtectedWeakFixedArray::New(isolate_, 0));
 #ifdef V8_ENABLE_WEBASSEMBLY
-    set_empty_wasm_dispatch_table(*isolate_->factory()->NewWasmDispatchTable(
-        0, wasm::kWasmFuncRef, SharedFlag{false}));
+    set_empty_wasm_dispatch_table(
+        *isolate_->factory()->NewWasmDispatchTable(0, wasm::kWasmFuncRef));
 #endif
   }
 }

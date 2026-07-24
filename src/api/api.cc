@@ -4290,15 +4290,17 @@ size_t v8::BackingStore::MaxByteLength() const {
 }
 
 bool v8::BackingStore::IsShared() const {
-  return reinterpret_cast<const i::BackingStore*>(this)->is_shared();
+  return reinterpret_cast<const i::BackingStore*>(this)->is_shared().value();
 }
 
 bool v8::BackingStore::IsImmutable() const {
-  return reinterpret_cast<const i::BackingStore*>(this)->is_immutable();
+  return reinterpret_cast<const i::BackingStore*>(this)->is_immutable().value();
 }
 
 bool v8::BackingStore::IsResizableByUserJavaScript() const {
-  return reinterpret_cast<const i::BackingStore*>(this)->is_resizable_by_js();
+  return reinterpret_cast<const i::BackingStore*>(this)
+      ->is_resizable_by_js()
+      .value();
 }
 
 // static
@@ -9679,7 +9681,7 @@ Local<SharedArrayBuffer> v8::SharedArrayBuffer::New(
   EnterV8NoScriptNoExceptionScope api_scope(i_isolate);
   std::shared_ptr<i::BackingStore> i_backing_store(ToInternal(backing_store));
   Utils::ApiCheck(
-      i_backing_store->is_shared(), "v8::SharedArrayBuffer::New",
+      i_backing_store->is_shared().value(), "v8::SharedArrayBuffer::New",
       "Cannot construct SharedArrayBuffer with BackingStore of ArrayBuffer");
   i::DirectHandle<i::JSArrayBuffer> obj =
       i_isolate->factory()->NewJSSharedArrayBuffer(std::move(i_backing_store));
@@ -10299,7 +10301,7 @@ void Isolate::Initialize(Isolate* v8_isolate,
     uintptr_t limit =
         reinterpret_cast<uintptr_t>(params.constraints.stack_limit());
     i_isolate->stack_guard()->SetStackLimit(limit);
-    i_isolate->set_stack_size(base::Stack::GetStackStart() - limit);
+    i_isolate->SetStackSize(base::Stack::GetStackStart() - limit);
   }
 
   // TODO(v8:2487): Once we got rid of Isolate::Current(), we can remove this.
@@ -10995,7 +10997,7 @@ void Isolate::SetStackLimit(uintptr_t stack_limit) {
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(this);
   CHECK(stack_limit);
   i_isolate->stack_guard()->SetStackLimit(stack_limit);
-  i_isolate->set_stack_size(base::Stack::GetStackStart() - stack_limit);
+  i_isolate->SetStackSize(base::Stack::GetStackStart() - stack_limit);
 }
 
 void Isolate::GetCodeRange(void** start, size_t* length_in_bytes) {

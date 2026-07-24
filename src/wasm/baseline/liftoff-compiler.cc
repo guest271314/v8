@@ -1436,11 +1436,19 @@ class LiftoffCompiler {
     if (ool->builtin == Builtin::kWasmGrowableStackGuard) {
       WasmGrowableStackGuardDescriptor descriptor;
       DCHECK_EQ(0, descriptor.GetStackParameterCount());
-      DCHECK_EQ(1, descriptor.GetRegisterParameterCount());
-      Register param_reg = descriptor.GetRegisterParameter(0);
-      __ LoadConstant(LiftoffRegister(param_reg),
+      DCHECK_EQ(2, descriptor.GetRegisterParameterCount());
+      Register param_reg0 = descriptor.GetRegisterParameter(0);
+      Register param_reg1 = descriptor.GetRegisterParameter(1);
+      __ LoadConstant(LiftoffRegister(param_reg0),
                       WasmValue::ForUintPtr(descriptor_->ParameterSlotCount() *
                                             kSystemPointerSize));
+      __ LoadConstant(LiftoffRegister(param_reg1), WasmValue::ForUintPtr(0));
+    } else if (ool->builtin == Builtin::kWasmStackGuard) {
+      WasmStackGuardDescriptor descriptor;
+      DCHECK_EQ(0, descriptor.GetStackParameterCount());
+      DCHECK_EQ(1, descriptor.GetRegisterParameterCount());
+      Register param_reg = descriptor.GetRegisterParameter(0);
+      __ LoadConstant(LiftoffRegister(param_reg), WasmValue::ForUintPtr(0));
     }
 
     Builtin builtin = ool->builtin;
@@ -3420,11 +3428,9 @@ class LiftoffCompiler {
       __ LoadInstanceDataFromFrame(instance_data);
     }
     CallBuiltin(Builtin::kWasmRefFunc,
-                MakeSig::Returns(kRef).Params(kRef, kI32, kI32),
+                MakeSig::Returns(kRef).Params(kRef, kI32),
                 {VarState{kRef, LiftoffRegister{instance_data}, 0},
-                 VarState{kI32, static_cast<int>(function_index), 0},
-                 // TODO(42204563): Support shared-everything proposal.
-                 VarState{kI32, 0, 0}},
+                 VarState{kI32, static_cast<int>(function_index), 0}},
                 decoder->position());
     __ PushRegister(kRef, LiftoffRegister(kReturnRegister0));
   }
@@ -3792,15 +3798,13 @@ class LiftoffCompiler {
     VarState index = PopIndexToVarState(&index_high_word, &pinned);
     // Trap if any bit in the high word was set.
     CheckHighWordEmptyForTableType(decoder, index_high_word, &pinned);
-    VarState extract_shared_part{kI32, 0, 0};
 
     bool is_funcref = IsSubtypeOf(imm.table->type, kWasmFuncRef, env_->module);
     auto stub =
         is_funcref ? Builtin::kWasmTableSetFuncRef : Builtin::kWasmTableSet;
 
-    CallBuiltin(stub, MakeSig::Params(kI32, kI32, kIntPtrKind, kRefNull),
-                {table_index, extract_shared_part, index, value},
-                decoder->position());
+    CallBuiltin(stub, MakeSig::Params(kI32, kIntPtrKind, kRefNull),
+                {table_index, index, value}, decoder->position());
 
     RegisterDebugSideTableEntry(decoder, DebugSideTableBuilder::kDidSpill);
   }
@@ -7593,12 +7597,6 @@ class LiftoffCompiler {
   }
 
   void DataDrop(FullDecoder* decoder, const IndexImmediate& imm) {
-    // TODO(14616): Fix sharedness.
-    // TODO(14616): Data segments aren't available during streaming compilation,
-    // hence the `has_shared()` check below.
-    CHECK(!decoder->enabled_.has_shared() ||
-          !decoder->module_->data_segments[imm.index].shared);
-
     LiftoffRegList pinned;
     Register instance_data = __ cache_state() -> cached_instance_data;
     if (instance_data == no_reg) {
@@ -7729,7 +7727,6 @@ class LiftoffCompiler {
     VarState table_index = LoadSmiConstant(imm.table.index, &pinned);
     VarState segment_index =
         LoadSmiConstant(imm.element_segment.index, &pinned);
-    VarState extract_shared_data = LoadSmiConstant(0, &pinned);
 
     VarState size = __ PopVarState();
     if (size.is_reg()) pinned.set(size.reg());
@@ -7741,11 +7738,10 @@ class LiftoffCompiler {
     // Trap if any bit in high word was set.
     CheckHighWordEmptyForTableType(decoder, index_high_word, &pinned);
 
-    CallBuiltin(
-        Builtin::kWasmTableInit,
-        MakeSig::Params(kIntPtrKind, kI32, kI32, kSmiKind, kSmiKind, kSmiKind),
-        {dst, src, size, table_index, segment_index, extract_shared_data},
-        decoder->position());
+    CallBuiltin(Builtin::kWasmTableInit,
+                MakeSig::Params(kIntPtrKind, kI32, kI32, kSmiKind, kSmiKind),
+                {dst, src, size, table_index, segment_index},
+                decoder->position());
 
     RegisterDebugSideTableEntry(decoder, DebugSideTableBuilder::kDidSpill);
   }
@@ -7781,7 +7777,6 @@ class LiftoffCompiler {
 
     VarState table_src_index = LoadSmiConstant(imm.table_src.index, &pinned);
     VarState table_dst_index = LoadSmiConstant(imm.table_dst.index, &pinned);
-    VarState extract_shared_data = LoadSmiConstant(0, &pinned);
 
     VarState size = PopIndexToVarState(&index_high_word, &pinned);
     VarState src = PopIndexToVarState(&index_high_word, &pinned);
@@ -7790,12 +7785,11 @@ class LiftoffCompiler {
     // Trap if any bit in the combined high words was set.
     CheckHighWordEmptyForTableType(decoder, index_high_word, &pinned);
 
-    CallBuiltin(
-        Builtin::kWasmTableCopy,
-        MakeSig::Params(kIntPtrKind, kIntPtrKind, kIntPtrKind, kSmiKind,
-                        kSmiKind, kSmiKind),
-        {dst, src, size, table_dst_index, table_src_index, extract_shared_data},
-        decoder->position());
+    CallBuiltin(Builtin::kWasmTableCopy,
+                MakeSig::Params(kIntPtrKind, kIntPtrKind, kIntPtrKind, kSmiKind,
+                                kSmiKind),
+                {dst, src, size, table_dst_index, table_src_index},
+                decoder->position());
 
     RegisterDebugSideTableEntry(decoder, DebugSideTableBuilder::kDidSpill);
     MaybeOSR();
@@ -7813,13 +7807,11 @@ class LiftoffCompiler {
     // If `delta` is, OOB table.grow should return -1.
     VarState delta = PopIndexToVarStateSaturating(&pinned);
     VarState value = __ PopVarState();
-    VarState extract_shared_data(kI32, 0, 0);
 
-    CallBuiltin(Builtin::kWasmTableGrow,
-                MakeSig::Returns(kSmiKind).Params(kSmiKind, kIntPtrKind, kI32,
-                                                  kRefNull),
-                {table_index, delta, extract_shared_data, value},
-                decoder->position());
+    CallBuiltin(
+        Builtin::kWasmTableGrow,
+        MakeSig::Returns(kSmiKind).Params(kSmiKind, kIntPtrKind, kRefNull),
+        {table_index, delta, value}, decoder->position());
 
     RegisterDebugSideTableEntry(decoder, DebugSideTableBuilder::kDidSpill);
     MaybeOSR();
@@ -7881,7 +7873,6 @@ class LiftoffCompiler {
     LiftoffRegList pinned;
 
     VarState table_index = LoadSmiConstant(imm.index, &pinned);
-    VarState extract_shared_data{kI32, 0, 0};
 
     VarState count = PopIndexToVarState(&high_words, &pinned);
     VarState value = __ PopVarState();
@@ -7890,11 +7881,9 @@ class LiftoffCompiler {
     // Trap if any bit in the combined high words was set.
     CheckHighWordEmptyForTableType(decoder, high_words, &pinned);
 
-    CallBuiltin(
-        Builtin::kWasmTableFill,
-        MakeSig::Params(kIntPtrKind, kIntPtrKind, kI32, kSmiKind, kRefNull),
-        {start, count, extract_shared_data, table_index, value},
-        decoder->position());
+    CallBuiltin(Builtin::kWasmTableFill,
+                MakeSig::Params(kIntPtrKind, kIntPtrKind, kSmiKind, kRefNull),
+                {start, count, table_index, value}, decoder->position());
 
     RegisterDebugSideTableEntry(decoder, DebugSideTableBuilder::kDidSpill);
   }
@@ -8553,21 +8542,15 @@ class LiftoffCompiler {
         pinned.set(__ GetUnusedRegister(kGpReg, pinned));
     LoadSmi(is_element_reg, array_imm.array_type->element_type().is_ref());
 
-    LiftoffRegister extract_shared_data_reg =
-        pinned.set(__ GetUnusedRegister(kGpReg, pinned));
-    LoadSmi(extract_shared_data_reg, 0);
-
     CallBuiltin(
         Builtin::kWasmArrayNewSegment,
-        MakeSig::Returns(kRef).Params(kI32, kI32, kI32, kSmiKind, kSmiKind,
-                                      kRef),
+        MakeSig::Returns(kRef).Params(kI32, kI32, kI32, kSmiKind, kRef),
         {
             VarState{kI32, static_cast<int>(segment_imm.index), 0},  // segment
             __ cache_state()->stack_state.end()[-2],                 // offset
             __ cache_state()->stack_state.end()[-1],                 // length
-            VarState{kSmiKind, is_element_reg, 0},           // is_element
-            VarState{kSmiKind, extract_shared_data_reg, 0},  // shared
-            VarState{kRef, rtt, 0}                           // rtt
+            VarState{kSmiKind, is_element_reg, 0},  // is_element
+            VarState{kRef, rtt, 0}                  // rtt
         },
         decoder->position());
 
@@ -8599,21 +8582,15 @@ class LiftoffCompiler {
         pinned.set(__ GetUnusedRegister(kGpReg, pinned));
     LoadSmi(is_element_reg, array_imm.array_type->element_type().is_ref());
 
-    LiftoffRegister extract_shared_data_reg =
-        pinned.set(__ GetUnusedRegister(kGpReg, pinned));
-    LoadSmi(extract_shared_data_reg, 0);
-
     // Builtin parameter order: array_index, segment_offset, length,
     //                          segment_index, array.
     CallBuiltin(Builtin::kWasmArrayInitSegment,
-                MakeSig::Params(kI32, kI32, kI32, kSmiKind, kSmiKind, kSmiKind,
-                                kRefNull),
+                MakeSig::Params(kI32, kI32, kI32, kSmiKind, kSmiKind, kRefNull),
                 {__ cache_state()->stack_state.end()[-3],
                  __ cache_state()->stack_state.end()[-2],
                  __ cache_state()->stack_state.end()[-1],
                  VarState{kSmiKind, segment_index_reg, 0},
                  VarState{kSmiKind, is_element_reg, 0},
-                 VarState{kSmiKind, extract_shared_data_reg, 0},
                  __ cache_state()->stack_state.end()[-4]},
                 decoder->position());
     __ DropValues(4);
@@ -8688,14 +8665,8 @@ class LiftoffCompiler {
 
   LiftoffRegister RttCanon(FullDecoder* decoder, ModuleTypeIndex type_index,
                            LiftoffRegList pinned) {
-    SharedFlag is_shared = decoder->module_->type(type_index).is_shared;
     LiftoffRegister rtt = pinned.set(__ GetUnusedRegister(kGpReg, pinned));
-    if (is_shared) {
-      LOAD_PROTECTED_PTR_INSTANCE_FIELD(rtt.gp(), SharedPart, pinned);
-      LOAD_TAGGED_PTR_FROM_INSTANCE(rtt.gp(), ManagedObjectMaps, rtt.gp())
-    } else {
-      LOAD_TAGGED_PTR_INSTANCE_FIELD(rtt.gp(), ManagedObjectMaps, pinned);
-    }
+    LOAD_TAGGED_PTR_INSTANCE_FIELD(rtt.gp(), ManagedObjectMaps, pinned);
     __ LoadTaggedPointer(
         rtt.gp(), rtt.gp(), no_reg,
         FixedArray::OffsetOfElementAt(type_index.index) - kHeapObjectTag);
@@ -11157,6 +11128,15 @@ class LiftoffCompiler {
     if (for_debugging_) {
       DefineSafepoint(trapping_instruction_pc);
     }
+    if (V8_UNLIKELY(debug_sidetable_builder_)) {
+      // The trap handler fakes a call from fault_address + 1, so the debugger
+      // will look up the stack frame and scope at trapping_instruction_pc + 1.
+      debug_sidetable_builder_->NewEntry(
+          trapping_instruction_pc + 1,
+          GetCurrentDebugSideTableEntries(
+              decoder, DebugSideTableBuilder::kAllowRegisters)
+              .as_vector());
+    }
   }
 
   int NextFeedbackVectorSlot(FullDecoder* decoder) {
@@ -11496,10 +11476,8 @@ std::unique_ptr<DebugSideTable> GenerateLiftoffDebugSideTable(
   base::Vector<const uint8_t> function_bytes =
       wire_bytes.GetFunctionBytes(function);
   CompilationEnv env = CompilationEnv::ForModule(native_module);
-  SharedFlag is_shared =
-      native_module->module()->type(function->sig_index).is_shared;
   FunctionBody func_body{function->sig, 0, function_bytes.begin(),
-                         function_bytes.end(), is_shared};
+                         function_bytes.end()};
 
   Zone zone(GetWasmEngine()->allocator(), "LiftoffDebugSideTableZone");
   auto call_descriptor = compiler::GetWasmCallDescriptor(&zone, function->sig);

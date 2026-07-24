@@ -288,6 +288,20 @@ class V8_EXPORT_PRIVATE PipelineData {
 #if V8_ENABLE_WEBASSEMBLY
     DCHECK_EQ(assembler_options_.is_wasm,
               info()->IsWasm() || info()->IsWasmBuiltin());
+    if (graph_component_.has_value()) {
+      for (const Operation& op : graph().AllOperations()) {
+        if (const FrameStateOp* frame_state = op.TryCast<FrameStateOp>()) {
+          const FrameStateInfo& info = frame_state->data->frame_state_info;
+          if (info.type() == FrameStateType::kLiftoffFunction &&
+              info.function_info()) {
+            size_t liftoff_size =
+                info.function_info()->wasm_liftoff_frame_size();
+            cg.max_unoptimized_frame_height =
+                std::max(cg.max_unoptimized_frame_height, liftoff_size);
+          }
+        }
+      }
+    }
 #endif
     std::optional<OsrHelper> osr_helper;
     if (cg.osr_helper) osr_helper = *cg.osr_helper;
@@ -464,13 +478,10 @@ class V8_EXPORT_PRIVATE PipelineData {
     return false;
   }
 
-  SharedFlag wasm_shared() const { return wasm_shared_; }
-
   void SetIsWasmFunction(const wasm::WasmModule* module,
-                         const wasm::FunctionSig* sig, SharedFlag shared) {
+                         const wasm::FunctionSig* sig) {
     wasm_module_ = module;
     wasm_module_sig_ = sig;
-    wasm_shared_ = shared;
     DCHECK(pipeline_kind() == TurboshaftPipelineKind::kWasm ||
            pipeline_kind() == TurboshaftPipelineKind::kJSToWasm);
   }
@@ -598,7 +609,6 @@ class V8_EXPORT_PRIVATE PipelineData {
   // The Wasm instance data of the inlined Wasm module. Set only during
   // Wasm-in-JS inlining in the JS pipeline.
   Handle<WasmTrustedInstanceData> wasm_instance_ = {};
-  SharedFlag wasm_shared_ = SharedFlag{false};
   WasmShuffleAnalyzer* wasm_shuffle_analyzer_ = nullptr;
   // When creating the Turboshaft graph from Maglev for Turbolev, we record in
   // {turbolev_graph_has_inlineable_wasm_calls_} whether there are inlineable

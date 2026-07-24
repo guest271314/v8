@@ -77,11 +77,40 @@ void ThrowTypeError(v8::Isolate* isolate, std::string_view message) {
 
 namespace {
 bool IsLocatedInMappedMemory(Address address, Heap* heap) {
+#if CONTIGUOUS_COMPRESSED_READ_ONLY_SPACE_BOOL
+  // Under contiguous compressed read-only space, any address inside the
+  // contiguous read-only reservation belongs to the read-only space. This
+  // check is 100% safe against crashes on arbitrary invalid addresses because
+  // it performs only bitwise operations on integers without dereferencing any
+  // memory.
+  if ((address & kContiguousReadOnlySpaceMask) == 0) {
+    return heap->read_only_space()->ContainsSlow(address);
+  }
+#else
+  // Fallback check for read-only space when contiguous compression is not used.
+  if (heap->read_only_space()->ContainsSlow(address)) {
+    return true;
+  }
+#endif
+
+  // Check the local memory allocator's normal and large pages.
   if (heap->memory_allocator()->LookupChunkContainingAddress(address) !=
       nullptr) {
     return true;
   }
-  return heap->read_only_space()->ContainsSlow(address);
+
+  // Also check the shared heap memory allocator if this isolate uses a shared
+  // space.
+  if (heap->isolate()->has_shared_space() &&
+      heap->isolate()
+              ->shared_space_isolate()
+              ->heap()
+              ->memory_allocator()
+              ->LookupChunkContainingAddress(address) != nullptr) {
+    return true;
+  }
+
+  return false;
 }
 
 bool IsValidHeapObject(Address addr, Heap* heap) {
@@ -1301,7 +1330,7 @@ void CrashFilter(int signal, siginfo_t* info, void* context) {
 }
 
 #ifdef V8_USE_ADDRESS_SANITIZER
-void FilterIfHarmlessMemcpyParamOverlap() {
+bool IsHarmlessMemcpyParamOverlap() {
   const void* src_addr = nullptr;
   size_t src_size = 0;
   const void* dest_addr = nullptr;
@@ -1311,14 +1340,14 @@ void FilterIfHarmlessMemcpyParamOverlap() {
     PrintToStderr(
         "Warning: ASan report indicates a memcpy-param-overlap, but we "
         "couldn't obtain the src/dest ranges.\n");
-    return;
+    return false;
   }
 
   if (src_size == 0 || dest_size == 0) {
     PrintToStderr(
         "Warning: ASan report indicates a memcpy-param-overlap, but "
         "one or both of the sizes is 0.\n");
-    return;
+    return false;
   }
 
   Address src_begin = reinterpret_cast<Address>(src_addr);
@@ -1327,15 +1356,11 @@ void FilterIfHarmlessMemcpyParamOverlap() {
   Address dest_last = dest_begin + dest_size - 1;
 
   Sandbox* sandbox = Sandbox::current();
-  if (src_begin <= src_last && dest_begin <= dest_last &&
-      sandbox->ReservationContains(src_begin) &&
-      sandbox->ReservationContains(src_last) &&
-      sandbox->ReservationContains(dest_begin) &&
-      sandbox->ReservationContains(dest_last)) {
-    FilterCrash(
-        "Caught harmless ASan fault (overlapping memcpy safely "
-        "contained in the sandbox).");
-  }
+  return src_begin <= src_last && dest_begin <= dest_last &&
+         sandbox->ReservationContains(src_begin) &&
+         sandbox->ReservationContains(src_last) &&
+         sandbox->ReservationContains(dest_begin) &&
+         sandbox->ReservationContains(dest_last);
 }
 #endif  // V8_USE_ADDRESS_SANITIZER
 
@@ -1343,28 +1368,24 @@ void FilterIfHarmlessMemcpyParamOverlap() {
 void SanitizerFaultHandler() {
 #ifdef V8_USE_ADDRESS_SANITIZER
   if (__asan_report_present()) {
-    const char* description = __asan_get_report_description();
+    const char* const description = __asan_get_report_description();
+    const Address faultaddr =
+        reinterpret_cast<Address>(__asan_get_report_address());
+    const MemoryAccessType access_type = __asan_get_report_access_type() == 0
+                                             ? MemoryAccessType::kRead
+                                             : MemoryAccessType::kWrite;
     if (description && strcmp(description, "memcpy-param-overlap") == 0) {
-      FilterIfHarmlessMemcpyParamOverlap();
-      // If we didn't filter the crash above, it's a legitimate violation.
-      // memcpy-param-overlap does not have a single fault address, so we
-      // return early to prevent the kNullAddress check below from filtering it.
-      PrintToStderr("\n## V8 sandbox violation detected!\n\n");
-      return;
-    }
-
-    Address faultaddr = reinterpret_cast<Address>(__asan_get_report_address());
-
-    if (faultaddr == kNullAddress) {
+      if (IsHarmlessMemcpyParamOverlap()) {
+        FilterCrash(
+            "Caught harmless ASan fault (overlapping memcpy safely contained "
+            "in the sandbox).");
+      }
+      // Otherwise, fall through to the sandbox report.
+    } else if (faultaddr == kNullAddress) {
       FilterCrash(
           "Caught ASan fault without a fault address. Ignoring it as we cannot "
           "check if it is a sandbox violation.");
-    }
-
-    MemoryAccessType access_type = __asan_get_report_access_type() == 0
-                                       ? MemoryAccessType::kRead
-                                       : MemoryAccessType::kWrite;
-    if (IsCrashInSafeMemoryRegion(faultaddr, access_type)) {
+    } else if (IsCrashInSafeMemoryRegion(faultaddr, access_type)) {
       FilterCrash("Caught harmless ASan fault (inside safe region).");
     }
   }

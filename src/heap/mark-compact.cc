@@ -829,15 +829,6 @@ void MarkCompactCollector::Prepare() {
   if (auto* new_space = heap_->new_space()) {
     new_space->GarbageCollectionPrologue();
   }
-  if (heap_->use_new_space()) {
-#ifdef DEBUG
-    Address original_top = heap_->allocator()
-                               ->new_space_allocator()
-                               ->GetOriginalTopAndLimit()
-                               .first;
-    DCHECK_EQ(heap_->allocator()->new_space_allocator()->top(), original_top);
-#endif  // DEBUG
-  }
 }
 
 void MarkCompactCollector::FinishConcurrentMarking() {
@@ -3295,8 +3286,8 @@ void MarkCompactCollector::ClearNonLiveReferences() {
                              code->kind() == CodeKind::TURBOFAN_JS ||
                              code->is_interpreter_trampoline_builtin());
                       entry.SetCodeAndEntrypointPointer(
-                          compile_lazy.ptr(),
-                          compile_lazy->instruction_start());
+                          compile_lazy.ptr(), compile_lazy->instruction_start(),
+                          isolate);
                     }
                   });
       })
@@ -5998,7 +5989,8 @@ void MarkCompactCollector::UpdatePointersInPointerTables() {
 #undef CASE
             return code->instruction_start();
           })();
-          jdt.SetCodeAndEntrypointNoWriteBarrier(handle, code, new_entrypoint);
+          jdt.SetCodeAndEntrypointNoWriteBarrier(handle, code, new_entrypoint,
+                                                 heap_->isolate());
           CHECK_IMPLIES(jdt.IsTieringRequested(handle),
                         old_entrypoint == new_entrypoint);
         }

@@ -188,6 +188,8 @@ class RecomputePhiUseHintsProcessor {
           use_repr = UseRepresentation::kTruncatedInt32;
         } else if (node->Is<NumberToString>()) {
           use_repr = UseRepresentation::kTaggedForNumberToString;
+        } else if (node->Is<CheckedNumberOrOddballToUint8Clamped>()) {
+          use_repr = UseRepresentation::kHoleyFloat64;
         }
         phi->RecordUseReprHint(UseRepresentationSet{use_repr},
                                live_loop_phis_.contains(phi));
@@ -485,7 +487,7 @@ class AnyUseMarkingProcessor {
           node->input(0).node()->Cast<InlinedAllocation>();
       // Since we don't analyze if allocations will escape until a fixpoint,
       // this could drop an use of an allocation and turn it non-escaping.
-      if (alloc->HasBeenElided()) {
+      if (alloc->HasBeenAnalysed() && alloc->HasBeenElided()) {
         // Skip first input.
         for (int i = 1; i < node->input_count(); i++) {
           DropInputUses(node->input(i));
@@ -557,7 +559,7 @@ class DeadNodeSweepingProcessor {
     // it access the allocation offsets.
     int size = 0;
     for (auto alloc : node->allocation_list()) {
-      if (alloc->HasEscaped()) {
+      if (!alloc->HasBeenAnalysed() || alloc->HasEscaped()) {
         alloc->set_offset(size);
         size += alloc->size();
       }
@@ -572,7 +574,7 @@ class DeadNodeSweepingProcessor {
 
   ProcessResult Process(InlinedAllocation* node, const ProcessingState& state) {
     // Remove inlined allocation that became non-escaping.
-    if (!node->HasEscaped()) {
+    if (node->HasBeenAnalysed() && node->HasBeenElided()) {
       if (v8_flags.trace_maglev_escape_analysis) {
         std::cout << "* Removing allocation node " << PrintNodeLabel(node)
                   << std::endl;

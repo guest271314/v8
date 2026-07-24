@@ -130,18 +130,6 @@ V8_WARN_UNUSED_RESULT Tagged<Object> ReturnFuzzSafe(Tagged<Object> value,
   CHECK_UNLESS_FUZZING(IsBoolean(args[index]));    \
   bool name = IsTrue(args[index]);
 
-bool IsAsmWasmFunction(Isolate* isolate, Tagged<JSFunction> function) {
-  DisallowGarbageCollection no_gc;
-#if V8_ENABLE_WEBASSEMBLY
-  // For simplicity we include invalid asm.js functions whose code hasn't yet
-  // been updated to CompileLazy but is still the InstantiateAsmJs builtin.
-  return function->shared()->HasAsmWasmData() ||
-         function->code(isolate)->builtin_id() == Builtin::kInstantiateAsmJs;
-#else
-  return false;
-#endif  // V8_ENABLE_WEBASSEMBLY
-}
-
 }  // namespace
 
 RUNTIME_FUNCTION(Runtime_ClearMegamorphicStubCache) {
@@ -360,8 +348,6 @@ bool CanOptimizeFunction(CodeKind target_kind,
   if (function->shared()->optimization_disabled(target_kind)) {
     return false;
   }
-
-  CHECK_UNLESS_FUZZING_RETURN_FALSE(!IsAsmWasmFunction(isolate, *function));
 
   // If we're fuzzing, allow having not marked the function for manual
   // optimization (if the steps below succeed).
@@ -658,8 +644,6 @@ RUNTIME_FUNCTION(Runtime_PrepareFunctionForOptimization) {
   if (function->shared()->all_optimization_disabled()) {
     return ReadOnlyRoots(isolate).undefined_value();
   }
-
-  CHECK_UNLESS_FUZZING(!IsAsmWasmFunction(isolate, *function));
 
   // Hold onto the bytecode array between marking and optimization to ensure
   // it's not flushed.
@@ -2903,13 +2887,9 @@ RUNTIME_FUNCTION(Runtime_Resume) {
   DCHECK_EQ(1, args.length());
   CHECK_UNLESS_FUZZING(IsString(args[0]));
   DirectHandle<String> phase_name = args.at<String>(0);
-  bool resumed =
+  bool success =
       SynchronizationPointSupport::Get()->Resume(phase_name->ToStdString());
-  if (!resumed) {
-    return isolate->Throw(*isolate->factory()->NewStringFromAsciiChecked(
-        "No thread is currently blocked at this synchronization point"));
-  }
-  return ReadOnlyRoots(isolate).undefined_value();
+  return isolate->heap()->ToBoolean(success);
 }
 
 // Waits until the given synchronization point is reached. Throws an exception
@@ -2926,15 +2906,9 @@ RUNTIME_FUNCTION(Runtime_WaitUntilBlocked) {
   base::TimeDelta timeout =
       base::TimeDelta::FromMilliseconds(args.smi_value_at(1));
 
-  bool timed_out = false;
-  bool blocked = SynchronizationPointSupport::Get()->WaitUntilBlocked(
-      phase_name->ToStdString(), timeout, timed_out);
-  if (!blocked) {
-    return isolate->Throw(*isolate->factory()->NewStringFromAsciiChecked(
-        timed_out ? "Synchronization point wait timed out"
-                  : "Synchronization point not found or not armed"));
-  }
-  return ReadOnlyRoots(isolate).undefined_value();
+  bool success = SynchronizationPointSupport::Get()->WaitUntilBlocked(
+      phase_name->ToStdString(), timeout);
+  return isolate->heap()->ToBoolean(success);
 }
 
 }  // namespace internal

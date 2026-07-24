@@ -22,8 +22,7 @@ class LiftoffCompileEnvironment {
       : isolate_(CcTest::InitIsolateOnce()),
         handle_scope_(isolate_),
         zone_(isolate_->allocator(), ZONE_NAME),
-        wasm_runner_(nullptr, kWasmOrigin, TestExecutionTier::kLiftoff, 0,
-                     isolate_) {
+        wasm_runner_(nullptr, TestExecutionTier::kLiftoff, 0, isolate_) {
     // Add a table of length 1, for indirect calls.
     wasm_runner_.builder().AddIndirectFunctionTable(nullptr, 1);
     // Set tiered down such that we generate debugging code.
@@ -153,10 +152,8 @@ class LiftoffCompileEnvironment {
         native_module->wire_bytes().SubVector(function->code.offset(),
                                               function->code.end_offset());
 
-    SharedFlag is_shared =
-        native_module->module()->type(function->sig_index).is_shared;
     FunctionBody body{sig, 0, function_wire_bytes.begin(),
-                      function_wire_bytes.end(), is_shared};
+                      function_wire_bytes.end()};
     return {code, body};
   }
 

@@ -33,6 +33,7 @@ namespace v8 {
 namespace internal {
 namespace maglev {
 
+enum class EnsureTypeResult;
 struct MaglevCallSiteInfo;
 class MaglevGraphBuilder;
 template <typename BaseT>
@@ -935,7 +936,8 @@ class MaglevReducer {
   ReduceResult BuildLoadTaggedField(
       ValueNode* object, uint32_t offset, NodeType type = NodeType::kUnknown,
       bool is_const = false, PropertyKey key = PropertyKey::None(),
-      IsArrayLength is_array_length = IsArrayLength::kNo);
+      IsArrayLength is_array_length = IsArrayLength::kNo,
+      compiler::OptionalMapRef stable_field_map = {});
 
   ReduceResult BuildLoadFixedDoubleArrayElement(ValueNode* elements,
                                                 ValueNode* index);
@@ -1129,6 +1131,7 @@ class MaglevReducer {
   V(DatePrototypeGetMonth)                     \
   V(DatePrototypeGetSeconds)                   \
   V(DatePrototypeGetTime)                      \
+  V(FunctionPrototypeHasInstance)              \
   V(MathAbs)                                   \
   V(MathCeil)                                  \
   V(MathClz32)                                 \
@@ -1138,8 +1141,10 @@ class MaglevReducer {
   V(MathMax)                                   \
   V(MathMin)                                   \
   V(MathRound)                                 \
+  V(MathSign)                                  \
   V(MathSqrt)                                  \
   V(MathTrunc)                                 \
+  V(ObjectPrototypeIsPrototypeOf)              \
   V(PromisePrototypeThen)                      \
   V(PromiseResolveTrampoline)                  \
   V(RegExpPrototypeTest)                       \
@@ -1203,6 +1208,8 @@ class MaglevReducer {
 
   ReduceResult BuildInt32Max(ValueNode* a, ValueNode* b);
   ReduceResult BuildInt32Min(ValueNode* a, ValueNode* b);
+  ReduceResult BuildInt32Sign(ValueNode* value);
+  ReduceResult BuildFloat64Sign(ValueNode* value);
 
   class BranchBuilder : public BranchBuilderBase<BranchBuilder> {
    public:
@@ -1382,7 +1389,8 @@ class MaglevReducer {
                                   ConvertReceiverMode mode);
   bool CanInlineCall(const MaglevCompilationUnit* current_unit,
                      compiler::SharedFunctionInfoRef shared,
-                     float call_frequency);
+                     float call_frequency, base::Vector<ValueNode*> arguments,
+                     UseRepresentationSet use_repr_hints);
 
   ReduceResult BuildCheckedSmiSizedInt32(ValueNode* input);
 
@@ -1457,26 +1465,54 @@ class MaglevReducer {
     return known_node_aspects().CheckTypes(broker(), node, types);
   }
 
-  V8_NODISCARD bool EnsureType(ValueNode* node, NodeType type,
-                               NodeType* old = nullptr) {
-    return known_node_aspects().EnsureType(broker(), node, type, old);
+  // Record type information for `node`. The caller needs to insert the
+  // corresponding Check node after this, if needed. If the resulting
+  // type is empty (i.e., it's impossible that `node` has the wanted type),
+  // insert an unconditional deopt.
+  MaybeReduceResult EnsureType(ValueNode* node, NodeType type,
+                               DeoptimizeReason reason,
+                               NodeType* old_type = nullptr) {
+    EnsureTypeResult ensure_res =
+        known_node_aspects().EnsureType(broker(), node, type, old_type);
+    if (ensure_res == EnsureTypeResult::kAlreadyHadType) {
+      return node;
+    }
+    if (ensure_res == EnsureTypeResult::kContradiction) {
+      return EmitUnconditionalDeopt(reason);
+    }
+    return {};
   }
 
-  void RecordType(ValueNode* node, NodeType type, NodeType* old = nullptr) {
+  // Record type information for `node`, when we already know it must have the
+  // given type. When the resulting type is empty (i.e., it's impossible that
+  // `node` has the wanted type), insert an Abort.
+  ReduceResult RecordType(ValueNode* node, NodeType type,
+                          NodeType* old = nullptr) {
     DCHECK(!node->Is<VirtualObject>());
 
+    EnsureTypeResult ensure_res =
+        known_node_aspects().EnsureType(broker(), node, type, old);
+    if (ensure_res == EnsureTypeResult::kContradiction) {
+      return BuildAbort(AbortReason::kUnreachable);
+    }
     // For Turbolev, we insert an AssumeType node when recording a previously
     // not-known type so that the GraphOptimizer (and in particular the KNA
     // processor) can also be aware of this type when non-eagerly reoptimizing
     // the graph later.
-    if (const bool already_known = EnsureType(node, type, old);
-        already_known || !is_turbolev()) {
-      return;
+    if (ensure_res == EnsureTypeResult::kAlreadyHadType || !is_turbolev()) {
+      return ReduceResult::Done();
     }
 
     auto* assume_node = NodeBase::New<AssumeType>(zone(), 1, type);
     assume_node->set_input(0, node);
     AttachExtraInfoAndAddToGraph(assume_node);
+    return ReduceResult::Done();
+  }
+
+  void RecordTypeNoAbort(ValueNode* node, NodeType type,
+                         NodeType* old = nullptr) {
+    ReduceResult result = RecordType(node, type, old);
+    CHECK(result.IsDoneWithoutAbort());
   }
 
   bool IsEmptyNodeType(NodeType type) {
@@ -1771,6 +1807,10 @@ class SubgraphBase {
   MaglevCompilationUnit* dummy_unit_;
   InterpreterFrameState variable_frame_;
 };
+
+bool IsSmallFunction(int bytecode_length, base::Vector<ValueNode*> arguments,
+                     UseRepresentationSet use_repr_hints,
+                     const CompilationFlags& flags);
 
 }  // namespace maglev
 }  // namespace internal

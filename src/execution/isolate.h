@@ -1814,7 +1814,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
 
   bool jitless() const { return jitless_; }
 
-  void set_stack_size(size_t v) { stack_size_ = v; }
+  void SetStackSize(size_t v);
   size_t stack_size() { return stack_size_; }
 
   base::RandomNumberGenerator* random_number_generator();
@@ -2400,9 +2400,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // Returns the isolate that owns the shared spaces.
   Isolate* shared_space_isolate() const {
     DCHECK(has_shared_space());
-    Isolate* isolate = shared_space_isolate_.value();
-    DCHECK(has_shared_space());
-    return isolate;
+    return shared_space_isolate_.value();
   }
 
   // Returns true when this isolate supports allocation in shared spaces.

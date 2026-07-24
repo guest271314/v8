@@ -82,9 +82,7 @@ using MakeSig = FixedSizeSignature<ValueType>;
 // globals, or memories.
 class TestModuleBuilder {
  public:
-  explicit TestModuleBuilder(ModuleOrigin origin = kWasmOrigin) : mod(origin) {
-    mod.num_declared_functions = 1;
-  }
+  explicit TestModuleBuilder() { mod.num_declared_functions = 1; }
   uint8_t AddGlobal(ValueType type, bool mutability = true) {
     // TODO(14616): Extend this to shared globals.
     mod.globals.push_back(
@@ -293,8 +291,7 @@ class FunctionBodyDecoderTestBase : public WithZoneMixin<BaseTest> {
         PrepareBytecode(CodeToVector(std::forward<Code>(raw_code)), append_end);
 
     // Validate the code.
-    // TODO(14616): Extend this to shared functions.
-    FunctionBody body(sig, 0, code.begin(), code.end(), SharedFlag{false});
+    FunctionBody body(sig, 0, code.begin(), code.end());
     WasmDetectedFeatures unused_detected_features;
     DecodeResult result =
         ValidateFunctionBody(this->zone(), enabled_features_, module,
@@ -3318,7 +3315,7 @@ TEST_F(FunctionBodyDecoderTest, Regression709741) {
   uint8_t code[] = {WASM_NOP, WASM_END};
 
   for (size_t i = 0; i < arraysize(code); ++i) {
-    FunctionBody body(sigs.v_v(), 0, code, code + i, SharedFlag{false});
+    FunctionBody body(sigs.v_v(), 0, code, code + i);
     WasmDetectedFeatures unused_detected_features;
     DecodeResult result =
         ValidateFunctionBody(this->zone(), WasmEnabledFeatures::All(), module,
@@ -4793,7 +4790,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicMemoryOrderValid) {
         static_cast<uint8_t>(AtomicMemoryOrder::kAcqRel)}) {
     const uint8_t kAlignment = 2;
     const uint8_t kOffset = 0;
-    const uint8_t kMemAccess = kAlignment | 0x20;
+    const uint8_t kMemAccess = kAlignment | 0x10;
     const uint8_t code[] = {
       WASM_LOCAL_GET(0),
       kAtomicPrefix, U32V_1(kExprI32AtomicLoad), kMemAccess, order, kOffset,
@@ -4831,7 +4828,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicMemoryOrderInvalid) {
   uint8_t order = static_cast<uint8_t>(AtomicMemoryOrder::kAcqRel) + 1;
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
   const char* error_msg = "invalid memory ordering";
   {
     const uint8_t code[] = {
@@ -4860,7 +4857,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicMemoryOrderInvalidImmediate) {
   uint8_t order = 16;
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
   const char* error_msg = "invalid memory ordering immediate";
   {
     const uint8_t code[] = {
@@ -4887,7 +4884,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicMemoryOrderAcqRelFeatureGated) {
 
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
   const uint8_t order = static_cast<uint8_t>(AtomicMemoryOrder::kAcqRel);
   const char* error_msg =
       "invalid memory ordering: acquire-release requires "
@@ -4954,7 +4951,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicMemoryOrderInvalidOnNonAtomic) {
     } else {
       code.push_back(static_cast<uint8_t>(opcode));
     }
-    code.push_back(0x20);  // Alignment + memory order bit
+    code.push_back(0x10);  // Alignment + memory order bit
     code.push_back(0);     // sequential consistency
     code.push_back(0);     // offset
     if (has_lane) code.push_back(0);
@@ -4986,7 +4983,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicRMWMemoryOrderValid) {
 
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
 
   // seqcst read, seqcst write
   uint8_t order_seqcst =
@@ -5036,7 +5033,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicRMWMemoryOrderInvalid) {
 
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
   const char* error_msg = "mismatched read and write memory ordering";
 
   // Mismatched orderings.
@@ -5060,7 +5057,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicRMWMemoryOrderInvalidImmediate) {
   uint8_t order = 0x22;
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
   const char* error_msg = "invalid memory ordering";
   const uint8_t code[] = {
       WASM_LOCAL_GET(0), WASM_LOCAL_GET(1),
@@ -5078,7 +5075,7 @@ TEST_F(FunctionBodyDecoderTest, AtomicRMWMemoryOrderAcqRelFeatureGated) {
 
   const uint8_t kAlignment = 2;
   const uint8_t kOffset = 0;
-  const uint8_t kMemAccess = kAlignment | 0x20;
+  const uint8_t kMemAccess = kAlignment | 0x10;
   const char* error_msg =
       "invalid memory ordering: acquire-release requires "
       "--wasm-acquire-release flag";
@@ -5205,10 +5202,9 @@ class WasmOpcodeLengthTest : public TestWithZone {
     const uint8_t code[] = {
         static_cast<uint8_t>(bytes)..., 0, 0, 0, 0, 0, 0, 0, 0};
     WasmDetectedFeatures detected_features;
-    // TODO(14616): Extend this to shared functions.
     WasmDecoder<Decoder::FullValidationTag> decoder(
         this->zone(), nullptr, WasmEnabledFeatures::None(), &detected_features,
-        nullptr, SharedFlag{false}, code, code + sizeof(code), 0);
+        nullptr, code, code + sizeof(code), 0);
     WasmDecoder<Decoder::FullValidationTag>::OpcodeLength(&decoder, code);
     EXPECT_TRUE(decoder.failed());
   }
@@ -5231,10 +5227,9 @@ class WasmOpcodeLengthTest : public TestWithZone {
       }
     }
     WasmDetectedFeatures detected;
-    // TODO(14616): Extend this to shared functions.
     WasmDecoder<Decoder::FullValidationTag> decoder(
         this->zone(), nullptr, WasmEnabledFeatures::All(), &detected, nullptr,
-        SharedFlag{false}, bytes, bytes + sizeof(bytes), 0);
+        bytes, bytes + sizeof(bytes), 0);
     WasmDecoder<Decoder::FullValidationTag>::OpcodeLength(&decoder, bytes);
     EXPECT_TRUE(decoder.ok())
         << opcode << " aka " << WasmOpcodes::OpcodeName(opcode) << ": "
@@ -5426,14 +5421,14 @@ TEST_F(WasmOpcodeLengthTest, Atomics) {
   // kExprI32AtomicLoad: prefix + opcode + align + offset.
   ExpectLength(4, kAtomicPrefix, kExprI32AtomicLoad & 0xFF, 0x02, 0x00);
   // kExprI32AtomicLoad with explicit memory order:
-  // prefix + opcode + align|0x20 + order + offset.
-  ExpectLength(5, kAtomicPrefix, kExprI32AtomicLoad & 0xFF, 0x22, 0x01, 0x00);
+  // prefix + opcode + align|0x10 + order + offset.
+  ExpectLength(5, kAtomicPrefix, kExprI32AtomicLoad & 0xFF, 0x12, 0x01, 0x00);
 
   // kExprI32AtomicAdd: prefix + opcode + align + offset.
   ExpectLength(4, kAtomicPrefix, kExprI32AtomicAdd & 0xFF, 0x02, 0x00);
   // kExprI32AtomicAdd with explicit memory order:
-  // prefix + opcode + align|0x20 + order + offset.
-  ExpectLength(5, kAtomicPrefix, kExprI32AtomicAdd & 0xFF, 0x22, 0x11, 0x00);
+  // prefix + opcode + align|0x10 + order + offset.
+  ExpectLength(5, kAtomicPrefix, kExprI32AtomicAdd & 0xFF, 0x12, 0x11, 0x00);
 
   // kExprAtomicNotify: prefix + opcode + align + offset.
   ExpectLength(4, kAtomicPrefix, kExprAtomicNotify & 0xFF, 0x02, 0x00);
@@ -5517,10 +5512,8 @@ class LocalDeclDecoderTest : public TestWithZone {
   bool DecodeLocalDecls(BodyLocalDecls* decls, const uint8_t* start,
                         const uint8_t* end) {
     WasmModule module;
-    // TODO(14616): Extend this to shared functions.
     return ValidateAndDecodeLocalDeclsForTesting(enabled_features_, decls,
-                                                 &module, SharedFlag{false},
-                                                 start, end, zone());
+                                                 &module, start, end, zone());
   }
 };
 

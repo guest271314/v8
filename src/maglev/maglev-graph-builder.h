@@ -855,7 +855,6 @@ class MaglevGraphBuilder {
   V(DataViewPrototypeGetByteLength)              \
   V(FunctionPrototypeApply)                      \
   V(FunctionPrototypeCall)                       \
-  V(FunctionPrototypeHasInstance)                \
   V(MapPrototypeGet)                             \
   V(WeakMapPrototypeGet)                         \
   V(ObjectPrototypeGetProto)                     \
@@ -1002,11 +1001,11 @@ class MaglevGraphBuilder {
       compiler::SharedFunctionInfoRef shared, CallArguments& args);
   bool ShouldEagerInlineCall(compiler::SharedFunctionInfoRef shared,
                              CallArguments& args);
-  ReduceResult BuildEagerInlineCall(ValueNode* context, ValueNode* function,
-                                    ValueNode* new_target,
-                                    compiler::SharedFunctionInfoRef shared,
-                                    compiler::FeedbackCellRef feedback_cell,
-                                    CallArguments& args, float call_frequency);
+  ReduceResult BuildEagerInlineCall(
+      ValueNode* context, ValueNode* function, ValueNode* new_target,
+      compiler::SharedFunctionInfoRef shared,
+      compiler::FeedbackCellRef feedback_cell,
+      const base::Vector<ValueNode*> arguments_vector, float call_frequency);
   MaybeReduceResult TryBuildInlineCall(
       ValueNode* context, ValueNode* function, ValueNode* new_target,
       JSDispatchHandle dispatch_handle,
@@ -1215,9 +1214,10 @@ class MaglevGraphBuilder {
   ReduceResult BuildLoadTaggedField(
       ValueNode* object, uint32_t offset, NodeType type = NodeType::kUnknown,
       bool is_const = false, PropertyKey key = PropertyKey::None(),
-      IsArrayLength is_array_length = IsArrayLength::kNo) {
+      IsArrayLength is_array_length = IsArrayLength::kNo,
+      compiler::OptionalMapRef stable_field_map = {}) {
     return reducer_.BuildLoadTaggedField(object, offset, type, is_const, key,
-                                         is_array_length);
+                                         is_array_length, stable_field_map);
   }
 
   ReduceResult BuildStoreTaggedField(
@@ -1386,10 +1386,11 @@ class MaglevGraphBuilder {
       compiler::JSTypedArrayRef typed_array, ValueNode* index,
       ElementsKind elements_kind);
   ReduceResult BuildStoreTypedArrayElement(ValueNode* object, ValueNode* index,
-                                           ElementsKind elements_kind);
+                                           ElementsKind elements_kind,
+                                           ValueNode* value);
   ReduceResult BuildStoreConstantTypedArrayElement(
       compiler::JSTypedArrayRef typed_array, ValueNode* index,
-      ElementsKind elements_kind);
+      ElementsKind elements_kind, ValueNode* value);
 
   MaybeReduceResult TryBuildElementAccessOnString(
       ValueNode* object, ValueNode* index,
