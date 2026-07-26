@@ -91,9 +91,10 @@ jobs:
         run: |
           cat << 'EOF' >> v8/src/base/macros.h
 
+          // Overridden for WASI standard library limits
           namespace std {
           template <typename T>
-          typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
+          inline typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
           make_unique_for_overwrite(size_t n) {
               typedef typename remove_extent<T>::type U;
               return unique_ptr<T>(new U[n]);
