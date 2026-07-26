@@ -34,9 +34,9 @@ jobs:
         with:
           path: v8
 
-      - name: Download Modern WASI SDK
+      - name: Download WASI SDK
         run: |
-          curl -sSLo wasi-sdk.tar.gz https://github.com{{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+          curl -sSLo wasi-sdk.tar.gz "https://github.com{{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz"
           tar -xzf wasi-sdk.tar.gz
           echo "$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin" >> $GITHUB_PATH
 
