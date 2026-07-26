@@ -1,17 +1,18 @@
-name: Build V8 d8 Shell (Optimized Split Files)
+name: Build V8 d8 Shell to WASM (WASI Target)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ wasm-build ]
   pull_request:
-    branches: [ main ]
+    branches: [ wasm-build ]
   workflow_dispatch:
 
 env:
+  WASI_SDK_VERSION: "25"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  build_d8:
+  build_d8_wasm:
     runs-on: ubuntu-latest
     
     steps:
@@ -23,29 +24,26 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git python3 curl xz-utils pkg-config ccache
+          sudo apt-get install -y git python3 curl xz-utils pkg-config ccache ninja-build
 
       - name: Checkout V8 Fork Source
         uses: actions/checkout@v4
         with:
           path: v8
 
+      - name: Download Modern WASI SDK
+        run: |
+          curl -sSLo wasi-sdk.tar.gz https://github.com{{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+          tar -xzf wasi-sdk.tar.gz
+          echo "$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin" >> $GITHUB_PATH
+
       - name: Install Google Depot Tools
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
-
-      - name: Cache Ccache Compiler Objects
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: v8-ccache-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            v8-ccache-${{ runner.os }}-
 
       - name: Configure Gclient and Sync Dependencies
         run: |
@@ -60,44 +58,48 @@ jobs:
           cd v8
           export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
-
       - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          gn gen out/x64.release --args='
+          gn gen out/wasm.release --args='
             is_debug=false 
-            target_cpu="x64" 
-            v8_monolithic=false 
-            is_component_build=false 
-            v8_use_external_startup_data=true
-            symbols_include_type="none" 
-            blink_symbol_level=0 
+            target_cpu="wasm"
+            v8_target_cpu="wasm"
+            v8_monolithic=true
+            is_component_build=false
+            v8_use_external_startup_data=false
+            v8_use_snapshot=false
+            v8_enable_jit=false
+            v8_enable_embedded_builtins=false
+            symbols_include_type="none"
+            blink_symbol_level=0
             v8_symbol_level=0
-            v8_enable_future_features=true
-            v8_enable_webassembly=true
-            v8_enable_wasm_gdb_remote_support=false
-            v8_enable_experimental_regexp_engine=false
-            v8_enable_embedded_builtins=true
+            v8_enable_i18n_support=false
+            v8_enable_webassembly=false
             cc_wrapper="ccache"
           '
 
-      - name: Compile d8 Shell
+      - name: Compile Monolithic V8 Static Engine
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          ccache -z
-          ninja -C out/x64.release d8
-          ccache -s
-          
-          # Scrub leftover trace records to trim file storage footprint
-          strip --strip-all out/x64.release/d8
+          ninja -C out/wasm.release v8_monolithic
 
-      - name: Upload d8 Binary Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: d8-linux-x64-optimized-split
-          path: |
-            v8/out/x64.release/d8
-            v8/out/x64.release/snapshot_blob.bin
-            v8/out/x64.release/icudtl.dat
+      - name: Cross-Compile d8 to Standalone WASM Module
+        run: |
+          WASI_CLANG="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin/clang++"
+          WASI_SYSROOT="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/share/wasi-sysroot"
+          
+          $WASI_CLANG -O3 \
+            --target=wasm32-wasi \
+            --sysroot=$WASI_SYSROOT \
+            -I./v8/include \
+            -I./v8 \
+            v8/src/d8/d8.cc \
+            -L./v8/out/wasm.release/obj \
+            -Wl,--allow-undefined \
+            -lv8_monolithic \
+            -ldl -pthread \
+            -o d8.wasm
+
