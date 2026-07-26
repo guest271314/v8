@@ -59,7 +59,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
 
-            - name: Patch V8 Source Location Fallbacks
+      - name: Patch V8 Source Location Fallbacks
         run: |
           sed -i 's/#include <source_location>/\/\/ Overridden for WASI\n#define V8_SUPPORTS_SOURCE_LOCATION 0/' v8/include/v8-source-location.h
 
