@@ -58,6 +58,7 @@ jobs:
           cd v8
           export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
+      
       - name: Generate GN Build Configurations
         run: |
           cd v8
@@ -79,6 +80,8 @@ jobs:
             v8_enable_i18n_support=false
             v8_enable_webassembly=false
             enable_rust=false
+            clang_use_chrome_plugins=false
+            use_custom_libcxx=false
             cc_wrapper="ccache"
           '
 
