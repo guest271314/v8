@@ -100,7 +100,7 @@ jobs:
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          ninja -C out/wasm.release v8_monolithic
+          ninja -C out/wasm.release v8_monolith
 
       - name: Cross-Compile d8 to Standalone WASM Module
         run: |
@@ -115,7 +115,7 @@ jobs:
             v8/src/d8/d8.cc \
             -L./v8/out/wasm.release/obj \
             -Wl,--allow-undefined \
-            -lv8_monolithic \
+            -lv8_monolith \
             -ldl -pthread \
             -o d8.wasm
 
