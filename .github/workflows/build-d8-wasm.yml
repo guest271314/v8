@@ -58,6 +58,11 @@ jobs:
           cd v8
           export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
+
+      - name: Patch V8 Source Location Fallbacks
+        run: |
+          # Use sed to safely replace the missing header inclusion with a standard fallback block
+          sed -i 's/#include <source_location>/\/\/ Overridden for WASI\n#define V8_SUPPORTS_SOURCE_LOCATION 0/' v8/include/v8-source-location.h
       
       - name: Generate GN Build Configurations
         run: |
@@ -90,7 +95,7 @@ jobs:
             use_custom_libcxx=false
             clang_use_chrome_plugins=false
             
-            extra_cflags_cc=\"-std=c++20\"
+            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
             
             ar=\"$WASI_BIN/llvm-ar\"
             nm=\"$WASI_BIN/llvm-nm\"
