@@ -111,12 +111,14 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
+          # Paths to your extracted WASI SDK toolchain binaries
           WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Set treat_warnings_as_errors=false to bypass the fatal atomic_ref warning
+          # Force custom toolchain parameters to prevent fallback compilation overrides
           gn gen out/wasm.release --args="
             is_debug=false 
+            target_os=\"linux\"
             target_cpu=\"x64\"
             v8_target_cpu=\"x64\"
             v8_monolithic=true
@@ -137,12 +139,19 @@ jobs:
             clang_use_chrome_plugins=false
             treat_warnings_as_errors=false
             
+            custom_toolchain=\"//build/toolchain/linux:custom\"
+            host_toolchain=\"//build/toolchain/linux:custom\"
+            
+            cc_wrapper=\"\"
+            
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
+            extra_cflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
+            extra_ldflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
             
             ar=\"$WASI_BIN/llvm-ar\"
             nm=\"$WASI_BIN/llvm-nm\"
-            cc=\"$WASI_BIN/clang --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
-            cxx=\"$WASI_BIN/clang++ --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
+            cc=\"$WASI_BIN/clang\"
+            cxx=\"$WASI_BIN/clang++\"
           "
 
       - name: Compile Monolithic V8 Static Engine
