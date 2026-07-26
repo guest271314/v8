@@ -115,10 +115,9 @@ jobs:
           WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Force custom toolchain parameters to prevent fallback compilation overrides
+          # We omit custom_toolchain entirely to rely on pre-mapped targets
           gn gen out/wasm.release --args="
             is_debug=false 
-            target_os=\"linux\"
             target_cpu=\"x64\"
             v8_target_cpu=\"x64\"
             v8_monolithic=true
@@ -138,11 +137,6 @@ jobs:
             use_custom_libcxx=false
             clang_use_chrome_plugins=false
             treat_warnings_as_errors=false
-            
-            custom_toolchain=\"//build/toolchain/linux:custom\"
-            host_toolchain=\"//build/toolchain/linux:custom\"
-            
-            cc_wrapper=\"\"
             
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
             extra_cflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
