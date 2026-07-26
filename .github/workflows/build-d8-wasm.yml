@@ -68,7 +68,7 @@ jobs:
           WASI_BIN="$(pwd)/../wasi-sdk/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk/share/wasi-sysroot"
           
-          # Trick GN by declaring x64 host mapping while forcing WASI compiler tools
+          # Explicitly add v8_enable_sandbox=false to satisfy the assertion
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -84,6 +84,7 @@ jobs:
             v8_symbol_level=0
             v8_enable_i18n_support=false
             v8_enable_webassembly=false
+            v8_enable_sandbox=false
             enable_rust=false
             use_custom_libcxx=false
             clang_use_chrome_plugins=false
