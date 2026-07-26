@@ -78,9 +78,9 @@ jobs:
             v8_symbol_level=0
             v8_enable_i18n_support=false
             v8_enable_webassembly=false
+            enable_rust=false
             cc_wrapper="ccache"
           '
-
 
       - name: Compile Monolithic V8 Static Engine
         run: |
