@@ -63,27 +63,36 @@ jobs:
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          gn gen out/wasm.release --args='
+          
+          # Paths to your extracted WASI SDK toolchain binaries
+          WASI_BIN="$(pwd)/../wasi-sdk/bin"
+          WASI_SYSROOT="$(pwd)/../wasi-sdk/share/wasi-sysroot"
+          
+          # Trick GN by declaring x64 host mapping while forcing WASI compiler tools
+          gn gen out/wasm.release --args="
             is_debug=false 
-            target_cpu="wasm"
-            v8_target_cpu="wasm"
-            v8_snapshot_toolchain="//build/toolchain/linux:clang_x64"
+            target_cpu=\"x64\"
+            v8_target_cpu=\"x64\"
             v8_monolithic=true
             is_component_build=false
             v8_use_external_startup_data=false
             v8_use_snapshot=false
             v8_enable_jit=false
             v8_enable_embedded_builtins=false
-            symbols_include_type="none"
+            symbols_include_type=\"none\"
             blink_symbol_level=0
             v8_symbol_level=0
             v8_enable_i18n_support=false
             v8_enable_webassembly=false
             enable_rust=false
-            clang_use_chrome_plugins=false
             use_custom_libcxx=false
-            cc_wrapper="ccache"
-          '
+            clang_use_chrome_plugins=false
+            
+            ar=\"$WASI_BIN/llvm-ar\"
+            nm=\"$WASI_BIN/llvm-nm\"
+            cc=\"$WASI_BIN/clang --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
+            cxx=\"$WASI_BIN/clang++ --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
+          "
 
       - name: Compile Monolithic V8 Static Engine
         run: |
