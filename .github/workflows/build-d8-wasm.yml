@@ -65,10 +65,10 @@ jobs:
           export PATH="$(pwd)/../depot_tools:$PATH"
           
           # Paths to your extracted WASI SDK toolchain binaries
-          WASI_BIN="$(pwd)/../wasi-sdk/bin"
-          WASI_SYSROOT="$(pwd)/../wasi-sdk/share/wasi-sysroot"
+          WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
+          WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Explicitly add v8_enable_sandbox=false to satisfy the assertion
+          # Added v8_enable_temporal_support=false to resolve the sub-assertion
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -85,6 +85,7 @@ jobs:
             v8_enable_i18n_support=false
             v8_enable_webassembly=false
             v8_enable_sandbox=false
+            v8_enable_temporal_support=false
             enable_rust=false
             use_custom_libcxx=false
             clang_use_chrome_plugins=false
