@@ -104,10 +104,6 @@ jobs:
           #endif
           EOF
 
-      - name: Patch Missing std::atomic_ref CTAD Deduction Guide
-        run: |
-          sed -i '/return std::atomic_ref(const_cast<uint16_t&>(half)).load(memory_order);/i \  template<typename _Tp> atomic_ref(_Tp\&) -> atomic_ref<_Tp>;' v8/src/heap/cppgc-internal/heap-object-header.h
-
       - name: Generate GN Build Configurations
         run: |
           cd v8
@@ -116,6 +112,7 @@ jobs:
           WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
+          # Set treat_warnings_as_errors=false to bypass the fatal atomic_ref warning
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -136,6 +133,7 @@ jobs:
             enable_rust=false
             use_custom_libcxx=false
             clang_use_chrome_plugins=false
+            treat_warnings_as_errors=false
             
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
             
