@@ -59,8 +59,75 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
 
-      - name: Patch V8 Source Location Fallbacks
+            - name: Patch V8 Source Location Fallbacks
         run: |
+          cat << 'EOF' > v8/include/v8-source-location.h
+          #ifndef INCLUDE_V8_SOURCE_LOCATION_H_
+          #define INCLUDE_V8_SOURCE_LOCATION_H_
+          #include "v8config.h"
+          #define V8_SUPPORTS_SOURCE_LOCATION 0
+          namespace v8 {
+          class V8_EXPORT SourceLocation final {
+           public:
+            static constexpr SourceLocation Current() { return SourceLocation(); }
+            constexpr SourceLocation() : file_(nullptr), function_(nullptr), line_(0) {}
+            constexpr const char* Function() const { return function_; }
+            constexpr const char* FileName() const { return file_; }
+            constexpr size_t Line() const { return line_; }
+           private:
+            const char* file_;
+            const char* function_;
+            size_t line_;
+          };
+          } // namespace v8
+          #endif  // INCLUDE_V8_SOURCE_LOCATION_H_
+          EOF
+
+      - name: Patch Missing Std Bit Cast Macros
+        run: |
+          sed -i 's/return std::bit_cast<Dest, Source>(source);/return __builtin_bit_cast(Dest, source);/' v8/src/base/macros.h
+
+      - name: Patch Missing std::make_unique_for_overwrite
+        run: |
+          cat << 'EOF' >> v8/src/base/macros.h
+
+          namespace std {
+          template <typename T>
+          typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
+          make_unique_for_overwrite(size_t n) {
+              typedef typename remove_extent<T>::type U;
+              return unique_ptr<T>(new U[n]);
+          }
+          }
+          EOF
+
+      - name: Generate GN Build Configurations
+        run: |
+          cd v8
+          export PATH="$(pwd)/../depot_tools:$PATH"
+          
+          WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
+          WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
+          
+          gn gen out/wasm.release --args="
+            is_debug=false 
+            target_cpu=\"x64\"
+            v8_target_cpu=\"x64\"
+            v8_monolithic=true
+            is_component_build=false
+            v8_use_external_startup_data=false
+            v8_use_snapshot=false
+            v8_enable_jit=false
+            v8_enable_embedded_builtins=false
+            symbols_include_type=\"none\"
+            blink_symbol_level=0
+            v8_symbol_level=0
+            v8_enable_i18n_support=false
+            v8_enable_webassembly=false
+            v8_enable_sandbox=false
+            v8_enable_temporal_support=false
+            enable_rust=false
+            use_custom_libcxx=false- name: Patch V8 Source Location Fallbacks
           cat << 'EOF' > v8/include/v8-source-location.h
           #ifndef INCLUDE_V8_SOURCE_LOCATION_H_
           #define INCLUDE_V8_SOURCE_LOCATION_H_
@@ -114,6 +181,16 @@ jobs:
             v8_enable_temporal_support=false
             enable_rust=false
             use_custom_libcxx=false
+            clang_use_chrome_plugins=false
+            
+            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
+            
+            ar=\"$WASI_BIN/llvm-ar\"
+            nm=\"$WASI_BIN/llvm-nm\"
+            cc=\"$WASI_BIN/clang --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
+            cxx=\"$WASI_BIN/clang++ --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
+          "
+
             clang_use_chrome_plugins=false
             
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
