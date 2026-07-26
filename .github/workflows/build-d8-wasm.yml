@@ -112,6 +112,7 @@ jobs:
           WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
+          # Appended -Wno-ctad-maybe-unsupported to bypass the atomic_ref CTAD warning
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -133,13 +134,14 @@ jobs:
             use_custom_libcxx=false
             clang_use_chrome_plugins=false
             
-            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
+            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0 -Wno-ctad-maybe-unsupported\"
             
             ar=\"$WASI_BIN/llvm-ar\"
             nm=\"$WASI_BIN/llvm-nm\"
             cc=\"$WASI_BIN/clang --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
             cxx=\"$WASI_BIN/clang++ --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
           "
+
 
       - name: Compile Monolithic V8 Static Engine
         run: |
