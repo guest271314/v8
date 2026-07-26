@@ -59,21 +59,22 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo ./build/install-build-deps.sh --no-prompt --no-chromeos-fonts --no-nacl
 
-      - name: Patch V8 Source Location Fallbacks
+            - name: Patch V8 Source Location Fallbacks
         run: |
-          # Use sed to safely replace the missing header inclusion with a standard fallback block
           sed -i 's/#include <source_location>/\/\/ Overridden for WASI\n#define V8_SUPPORTS_SOURCE_LOCATION 0/' v8/include/v8-source-location.h
-      
+
+      - name: Patch Missing Std Bit Cast Macros
+        run: |
+          sed -i 's/return std::bit_cast<Dest, Source>(source);/return __builtin_bit_cast(Dest, source);/' v8/src/base/macros.h
+
       - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          # Paths to your extracted WASI SDK toolchain binaries
           WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Force C++20 standard using extra_cflags_cc to fix std::bit_cast
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -93,10 +94,8 @@ jobs:
             v8_enable_temporal_support=false
             enable_rust=false
             use_custom_libcxx=false
-            clang_use_chrome_plugins=false
-            
-            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
-            
+            clang_use_chrome_plugins=false           
+            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"            
             ar=\"$WASI_BIN/llvm-ar\"
             nm=\"$WASI_BIN/llvm-nm\"
             cc=\"$WASI_BIN/clang --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
