@@ -91,7 +91,8 @@ jobs:
         run: |
           cat << 'EOF' >> v8/src/base/macros.h
 
-          // Overridden for WASI standard library limits
+          #ifndef _WASI_OVERWRITE_PATCH_
+          #define _WASI_OVERWRITE_PATCH_
           namespace std {
           template <typename T>
           inline typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
@@ -100,6 +101,7 @@ jobs:
               return unique_ptr<T>(new U[n]);
           }
           }
+          #endif
           EOF
 
       - name: Generate GN Build Configurations
