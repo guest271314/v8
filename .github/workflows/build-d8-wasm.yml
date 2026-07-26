@@ -98,7 +98,6 @@ jobs:
             cxx=\"$WASI_BIN/clang++ --target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
           "
 
-
       - name: Compile Monolithic V8 Static Engine
         run: |
           cd v8
