@@ -66,6 +66,7 @@ jobs:
             is_debug=false 
             target_cpu="wasm"
             v8_target_cpu="wasm"
+            v8_snapshot_toolchain="//build/toolchain/linux:clang_x64"
             v8_monolithic=true
             is_component_build=false
             v8_use_external_startup_data=false
@@ -79,6 +80,7 @@ jobs:
             v8_enable_webassembly=false
             cc_wrapper="ccache"
           '
+
 
       - name: Compile Monolithic V8 Static Engine
         run: |
