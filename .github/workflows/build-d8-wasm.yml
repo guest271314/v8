@@ -84,7 +84,6 @@ jobs:
           #endif  // INCLUDE_V8_SOURCE_LOCATION_H_
           EOF
 
-
       - name: Patch Missing Std Bit Cast Macros
         run: |
           sed -i 's/return std::bit_cast<Dest, Source>(source);/return __builtin_bit_cast(Dest, source);/' v8/src/base/macros.h
@@ -106,16 +105,29 @@ jobs:
           #endif
           EOF
 
+      - name: Patch Missing std::make_unique_for_overwrite inside BigInt
+        run: |
+          cat << 'EOF' >> v8/src/bigint/bigint.h
+
+          #ifndef _WASI_BIGINT_OVERWRITE_PATCH_
+          #define _WASI_BIGINT_OVERWRITE_PATCH_
+          namespace std {
+          template <typename T>
+          inline typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
+          make_unique_for_overwrite(size_t n) {
+              typedef typename remove_extent<T>::type U;
+              return unique_ptr<T>(new U[n]);
+          }
+          }
+          #endif
+          EOF
+
       - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          # Paths to your extracted WASI SDK toolchain binaries
-          WASI_BIN="$(pwd)/../wasi-sdk-25.0-x86_64-linux/bin"
-          WASI_SYSROOT="$(pwd)/../wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
-          
-          # We omit custom_toolchain entirely to rely on pre-mapped targets
+          # Revert to standard interpreter mode to let internal compilers link without crashes
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -139,13 +151,6 @@ jobs:
             treat_warnings_as_errors=false
             
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
-            extra_cflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
-            extra_ldflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
-            
-            ar=\"$WASI_BIN/llvm-ar\"
-            nm=\"$WASI_BIN/llvm-nm\"
-            cc=\"$WASI_BIN/clang\"
-            cxx=\"$WASI_BIN/clang++\"
           "
 
       - name: Compile Monolithic V8 Static Engine
