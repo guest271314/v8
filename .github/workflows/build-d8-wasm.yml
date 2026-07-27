@@ -122,12 +122,15 @@ jobs:
           #endif
           EOF
 
+      - name: Patch Explicit Types for std::atomic_ref CTAD
+        run: |
+          sed -i 's/std::atomic_ref(const_cast<uint16_t&>(half))/std::atomic_ref<uint16_t>(const_cast<uint16_t\&>(half))/' v8/src/heap/cppgc-internal/heap-object-header.h
+
       - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          # Revert to standard interpreter mode to let internal compilers link without crashes
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
