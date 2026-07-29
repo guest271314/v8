@@ -77,7 +77,7 @@ jobs:
             constexpr const char* FileName() const { return file_; }
             constexpr size_t Line() const { return line_; }
             constexpr explicit operator bool() const noexcept { return file_ != nullptr; }
-            std::string ToString() const { return file_ ? std::string(file_) + ":" + std::to_string(line_) : ""; }
+            std::string ToString() const;
            private:
             const char* file_;
             const char* function_;
@@ -89,7 +89,6 @@ jobs:
 
       - name: Patch Internal Source Location Interface
         run: |
-          # Completely override the internal codegen source location to prevent code-assembler.h breaks
           cat << 'EOF' > v8/src/codegen/source-location.h
           #ifndef V8_CODEGEN_SOURCE_LOCATION_H_
           #define V8_CODEGEN_SOURCE_LOCATION_H_
@@ -115,6 +114,12 @@ jobs:
           } // namespace v8
           #endif  // V8_CODEGEN_SOURCE_LOCATION_H_
           EOF
+
+      - name: Patch V8 API Implementation Overlaps
+        run: |
+          # Use sed to intercept api.cc and replace the problematic definition with a safe mock return that satisfies our modified header
+          sed -i '/std::string SourceLocation::ToString() const {/,/^}/c\std::string SourceLocation::ToString() const { return file_ ? std::string(file_) + ":" + std::to_string(line_) : ""; }' v8/src/api/api.cc
+
 
       - name: Patch Missing Std Bit Cast Macros
         run: |
