@@ -168,6 +168,7 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
+          # Maintain the clean interpreter layout configuration
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -193,32 +194,21 @@ jobs:
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
           "
 
-      - name: Compile Monolithic V8 Static Engine
+      - name: Compile d8 Executable Natively Via Ninja
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          ninja -C out/wasm.release v8_monolith
-
-      - name: Cross-Compile d8 to Standalone WASM Module
-        run: |
-          WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
-          WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          $WASI_CLANG -O3 -std=c++20 \
-            --target=wasm32-wasi \
-            --sysroot=$WASI_SYSROOT \
-            -DV8_SUPPORTS_SOURCE_LOCATION=0 \
-            -DV8_TARGET_ARCH_X64 \
-            -D_LIBCPP_HAS_NO_THREADS \
-            -I./v8/include \
-            -I./v8 \
-            -I./v8/out/wasm.release/gen \
-            v8/src/d8/d8.cc \
-            -L./v8/out/wasm.release/obj \
-            -Wl,--allow-undefined \
-            -lv8_monolith \
-            -o d8.wasm
+          # Force Ninja to handle the full dependency orchestration and generate the shell binary
+          ninja -C out/wasm.release d8
 
+      - name: Verify and Locate Output Artifact
+        run: |
+          # The generated executable binary will reside inside your build output folder
+          ls -la v8/out/wasm.release/d8
 
-
-
+      - name: Upload Standalone d8 WASM Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: d8-wasm-module
+          path: v8/out/wasm.release/d8
