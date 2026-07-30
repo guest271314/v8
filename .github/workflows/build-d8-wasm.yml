@@ -129,8 +129,8 @@ jobs:
         run: |
           cat << 'EOF' >> v8/src/base/macros.h
 
-          #ifndef _WASI_OVERWRITE_PATCH_
-          #define _WASI_OVERWRITE_PATCH_
+          #ifndef _WASI_UNIQUE_OVERWRITE_GUARD_
+          #define _WASI_UNIQUE_OVERWRITE_GUARD_
           namespace std {
           template <typename T>
           inline typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
@@ -146,8 +146,8 @@ jobs:
         run: |
           cat << 'EOF' >> v8/src/bigint/bigint.h
 
-          #ifndef _WASI_BIGINT_OVERWRITE_PATCH_
-          #define _WASI_BIGINT_OVERWRITE_PATCH_
+          #ifndef _WASI_UNIQUE_OVERWRITE_GUARD_
+          #define _WASI_UNIQUE_OVERWRITE_GUARD_
           namespace std {
           template <typename T>
           inline typename enable_if<is_array<T>::value && extent<T>::value == 0, unique_ptr<T>>::type
