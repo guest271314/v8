@@ -164,6 +164,7 @@ jobs:
       - name: Patch C++20 ostringstream view Method Fallbacks
         run: |
           sed -i 's/\.view()/\.str()/g' v8/src/d8/d8.cc
+          
       - name: Generate GN Build Configurations
         run: |
           cd v8
@@ -202,7 +203,7 @@ jobs:
           ninja -C out/wasm.release v8_monolith
 
 
-            - name: Cross-Compile d8 to True Standalone WASM Module
+      - name: Cross-Compile d8 to True Standalone WASM Module
         run: |
           WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
