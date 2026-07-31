@@ -169,12 +169,11 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          # Force target_cpu="wasm" while satisfying the internal toolchain selection checks
+          # Force target_cpu="x86" to perfectly match WebAssembly's 32-bit flat memory constraints
           gn gen out/wasm.release --args='
             is_debug=false 
-            target_cpu="wasm"
-            v8_target_cpu="wasm"
-            v8_snapshot_toolchain="//build/toolchain/linux:clang_x64"
+            target_cpu="x86"
+            v8_target_cpu="x86"
             v8_monolithic=true
             is_component_build=false
             v8_use_external_startup_data=false
@@ -193,29 +192,27 @@ jobs:
             clang_use_chrome_plugins=false
             treat_warnings_as_errors=false
             
-            custom_toolchain="//build/toolchain/linux:clang_x64_v8_arm64"
-            
             extra_cflags_cc="-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0"
           '
 
-      - name: Compile Monolithic V8 Wasm Static Archive
+      - name: Compile Monolithic 32-Bit C++ Interpreter Archive
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          # Compile the static archive of pure WebAssembly objects
           ninja -C out/wasm.release v8_monolith
 
-      - name: Cross-Compile d8 to True Standalone WASM Module
+
+            - name: Cross-Compile d8 to True Standalone WASM Module
         run: |
           WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Link your custom I/O features in d8.cc directly against the WebAssembly static engine
+          # Cross-compile your custom streams via wasi-sdk, linking it directly into a true .wasm file
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
             -DV8_SUPPORTS_SOURCE_LOCATION=0 \
-            -DV8_TARGET_ARCH_32_BIT \
+            -DV8_TARGET_ARCH_IA32 \
             -D_LIBCPP_HAS_NO_THREADS \
             -I./v8/include \
             -I./v8 \
