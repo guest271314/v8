@@ -207,13 +207,12 @@ jobs:
           export PATH="$(pwd)/../depot_tools:$PATH"
           ninja -C out/wasm.release v8_monolith
 
-
-      - name: Cross-Compile d8 to True Standalone WASM Module
+      - name: Cross-Compile d8 to Genuine Standalone WASM Module
         run: |
           WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Cross-compile your custom streams via wasi-sdk, linking it directly into a true .wasm file
+          # Explicitly target wasm32-wasi, force C++20, and path all third-party dependencies
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
@@ -222,6 +221,7 @@ jobs:
             -D_LIBCPP_HAS_NO_THREADS \
             -I./v8/include \
             -I./v8 \
+            -I./v8/third_party/abseil-cpp \
             -I./v8/out/wasm.release/gen \
             v8/src/d8/d8.cc \
             -L./v8/out/wasm.release/obj \
@@ -229,9 +229,10 @@ jobs:
             -lv8_monolith \
             -o d8.wasm
 
-      - name: Upload Genuine Standalone d8 WASM Binary
+      - name: Upload Standalone d8 WASM Binary
         uses: actions/upload-artifact@v4
         with:
           name: d8-wasm-module
           path: d8.wasm
+
 
