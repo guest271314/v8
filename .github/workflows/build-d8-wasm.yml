@@ -211,11 +211,105 @@ jobs:
           export PATH="$(pwd)/../depot_tools:$PATH"
           ninja -C out/wasm.release v8_monolith
 
-      - name: Cross-Compile d8 to True Standalone WASM Module
+      - name: Generate Workerless Standalone WASI Shell
+        run: |
+          cat << 'EOF' > v8/src/d8/wasm_shell.cc
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include "include/libv8.h"
+          #include "include/v8-context.h"
+          #include "include/v8-initialization.h"
+          #include "include/v8-isolate.h"
+          #include "include/v8-local-handle.h"
+          #include "include/v8-primitive.h"
+          #include "include/v8-script.h"
+          #include "include/v8-template.h"
+
+          namespace v8 {
+          class Shell {
+           public:
+            static void ReadStdinBytes(const v8::FunctionCallbackInfo<v8::Value>& args);
+            static void WriteStdoutBytes(const v8::FunctionCallbackInfo<v8::Value>& args);
+          };
+          }
+
+          int main(int argc, char* argv[]) {
+              if (argc < 2) {
+                  fprintf(stderr, "Usage: wasm_shell <file.js>\n");
+                  return 1;
+              }
+
+              v8::V8::InitializeICU();
+              std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
+              v8::V8::InitializePlatform(platform.get());
+              v8::V8::Initialize();
+
+              v8::Isolate::CreateParams create_params;
+              create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+              v8::Isolate* isolate = v8::Isolate::New(create_params);
+
+              {
+                  v8::Isolate::Scope isolate_scope(isolate);
+                  v8::HandleScope handle_scope(isolate);
+
+                  v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
+
+                  global->Set(isolate, "print", v8::FunctionTemplate::New(isolate, [](const v8::FunctionCallbackInfo<v8::Value>& args) {
+                      v8::Isolate* iso = args.GetIsolate();
+                      v8::HandleScope hs(iso);
+                      for (int i = 0; i < args.Length(); i++) {
+                          v8::String::Utf8Value utf8(iso, args[i]);
+                          printf("%s%s", *utf8, i == args.Length() - 1 ? "" : " ");
+                      }
+                      printf("\n");
+                  }));
+
+                  v8::Local<v8::ObjectTemplate> os = v8::ObjectTemplate::New(isolate);
+                  os->Set(isolate, "readStdinBytes", v8::FunctionTemplate::New(isolate, v8::Shell::ReadStdinBytes));
+                  os->Set(isolate, "writeStdoutBytes", v8::FunctionTemplate::New(isolate, v8::Shell::WriteStdoutBytes));
+                  global->Set(isolate, "os", os);
+
+                  v8::Local<v8::Context> context = v8::Context::New(isolate, nullptr, global);
+                  v8::Context::Scope context_scope(context);
+
+                  FILE* file = fopen(argv[1], "rb");
+                  if (!file) {
+                      fprintf(stderr, "Error opening script file: %s\n", argv[1]);
+                      return 1;
+                  }
+                  fseek(file, 0, SEEK_END);
+                  size_t size = ftell(file);
+                  rewind(file);
+                  char* chars = new char[size + 1];
+                  chars[size] = '\0';
+                  size_t read_bytes = fread(chars, 1, size, file);
+                  fclose(file);
+
+                  v8::Local<v8::String> source = v8::String::NewFromUtf8(isolate, chars, v8::NewStringType::kNormal, read_bytes).ToLocalChecked();
+                  delete[] chars;
+
+                  v8::Local<v8::Script> script;
+                  if (v8::Script::Compile(context, source).ToLocalChecked(&script)) {
+                      v8::MaybeLocal<v8::Value> result = script->Run(context);
+                  }
+              }
+
+              isolate->Dispose();
+              v8::V8::Dispose();
+              v8::V8::DisposePlatform();
+              delete create_params.array_buffer_allocator;
+              return 0;
+          }
+          EOF
+
+
+      - name: Cross-Compile Standalone WASM Shell
         run: |
           WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
+          # Compile the clean, threadless wasm_shell.cc and link your custom extensions from the compiled object file
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
@@ -226,7 +320,8 @@ jobs:
             -I./v8 \
             -I./v8/third_party/abseil-cpp \
             -I./v8/out/wasm.release/gen \
-            v8/src/d8/d8.cc \
+            v8/src/d8/wasm_shell.cc \
+            v8/out/wasm.release/obj/v8_shell/d8.o \
             -L./v8/out/wasm.release/obj \
             -Wl,--allow-undefined \
             -lv8_monolith \
