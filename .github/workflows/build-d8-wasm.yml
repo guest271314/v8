@@ -309,7 +309,7 @@ jobs:
           WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Compile the clean, threadless wasm_shell.cc and link your custom extensions from the compiled object file
+          # FIXED: Updated the object path parameter to load natively from obj/src/d8/d8.o
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
@@ -321,7 +321,7 @@ jobs:
             -I./v8/third_party/abseil-cpp \
             -I./v8/out/wasm.release/gen \
             v8/src/d8/wasm_shell.cc \
-            v8/out/wasm.release/obj/v8_shell/d8.o \
+            v8/out/wasm.release/obj/src/d8/d8.o \
             -L./v8/out/wasm.release/obj \
             -Wl,--allow-undefined \
             -lv8_monolith \
