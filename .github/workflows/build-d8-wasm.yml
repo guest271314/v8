@@ -2,9 +2,9 @@ name: Build V8 d8 Shell to WASM (WASI Target)
 
 on:
   push:
-    branches: [ wasm-build ]
+    branches: [wasm-build]
   pull_request:
-    branches: [ wasm-build ]
+    branches: [wasm-build]
   workflow_dispatch:
 
 env:
@@ -14,7 +14,7 @@ env:
 jobs:
   build_d8_wasm:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Maximize Disk Space
         run: |
@@ -168,25 +168,29 @@ jobs:
       - name: Patch C++20 ostringstream view Method Fallbacks
         run: |
           sed -i 's/\.view()/\.str()/g' v8/src/d8/d8.cc
-          
+
+      - name: Patch out Multi-Threaded Workers for WASI compatibility
+        run: |
+          sed -i 's/class Worker :/class __attribute__((visibility("hidden"))) Worker :/g' v8/src/d8/d8.cc
+          sed -i '/global_template->Set(isolate, "Worker",/d' v8/src/d8/d8.cc
+
       - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          gn gen out/wasm.release --args='
+          gn gen out/wasm.release --args="
             is_debug=false 
-            target_cpu="x86"
-            v8_target_cpu="x86"
+            target_cpu=\"x86\"
+            v8_target_cpu=\"x86\"
             v8_monolithic=true
             is_component_build=false
             v8_use_external_startup_data=false
             v8_use_snapshot=false
-            v8_enable_snapshot_compression=false
             v8_enable_jit=false
             v8_enable_embedded_builtins=false
             v8_control_flow_integrity=false
-            symbols_include_type="none"
+            symbols_include_type=\"none\"
             blink_symbol_level=0
             v8_symbol_level=0
             v8_enable_i18n_support=false
@@ -198,21 +202,20 @@ jobs:
             clang_use_chrome_plugins=false
             treat_warnings_as_errors=false
             
-            extra_cflags_cc="-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0"
-          '
+            extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
+          "
 
-      - name: Compile Monolithic 32-Bit C++ Interpreter Archive
+      - name: Compile Monolithic 32-Bit Interpreter Static Archive
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           ninja -C out/wasm.release v8_monolith
 
-      - name: Cross-Compile d8 to Genuine Standalone WASM Module
+      - name: Cross-Compile d8 to True Standalone WASM Module
         run: |
           WASI_CLANG="$(pwd)/wasi-sdk-25.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-25.0-x86_64-linux/share/wasi-sysroot"
           
-          # Explicitly target wasm32-wasi, force C++20, and path all third-party dependencies
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
@@ -234,5 +237,3 @@ jobs:
         with:
           name: d8-wasm-module
           path: d8.wasm
-
-
