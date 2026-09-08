@@ -230,7 +230,25 @@ jobs:
           #include "v8-template.h"
           #include "v8-array-buffer.h"
           #include "v8-typed-array.h"
-          #include "libplatform/libplatform.h"
+          #include "v8-platform.h"
+
+          // Define a custom thread-less, primitive platform layout to clear library mismatches
+          class WasmInterpreterPlatform : public v8::Platform {
+          public:
+              WasmInterpreterPlatform() {}
+              ~WasmInterpreterPlatform() override {}
+              
+              v8::PageAllocator* GetPageAllocator() override { return nullptr; }
+              void OnCriticalMemoryPressure() override {}
+              int NumberOfWorkerThreads() override { return 0; }
+              std::shared_ptr<v8::TaskRunner> GetForegroundTaskRunner(v8::Isolate* isolate, v8::TaskPriority priority) override { return nullptr; }
+              void PostTaskOnWorkerThreadImpl(v8::TaskPriority priority, std::unique_ptr<v8::Task> task, const v8::SourceLocation& location) override {}
+              void PostDelayedTaskOnWorkerThreadImpl(v8::TaskPriority priority, std::unique_ptr<v8::Task> task, double delay_in_seconds, const v8::SourceLocation& location) override {}
+              bool IdleTasksEnabled(v8::Isolate* isolate) override { return false; }
+              double MonotonicallyIncreasingTime() override { return 0.0; }
+              double CurrentClockTimeMillis() override { return 0.0; }
+              v8::TracingController* GetTracingController() override { static v8::TracingController dummy; return &dummy; }
+          };
 
           namespace v8 {
           class Shell {
@@ -340,7 +358,8 @@ jobs:
                   return 1;
               }
 
-              std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform(0, v8::platform::IdleTaskSupport::kDisabled);
+              // Instantiate our clean, direct, dependency-free raw platform wrapper
+              std::unique_ptr<v8::Platform> platform = std::make_unique<WasmInterpreterPlatform>();
               v8::V8::InitializePlatform(platform.get());
               v8::V8::Initialize();
 
