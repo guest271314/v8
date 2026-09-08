@@ -210,7 +210,7 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           ninja -C out/wasm.release v8_monolith
-
+          
       - name: Generate Workerless Standalone WASI Shell
         run: |
           cat << 'EOF' > v8/src/d8/wasm_shell.cc
@@ -240,13 +240,13 @@ jobs:
                 v8::HandleScope handle_scope(isolate);
                 v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-                if (args.Length() < 1 || !args->IsUint32()) {
+                if (args.Length() < 1 || !args[0]->IsUint32()) {
                     isolate->ThrowException(v8::String::NewFromUtf8(
                         isolate, "Invalid argument. Expected number of bytes.").ToLocalChecked());
                     return;
                 }
                 
-                uint32_t num_bytes = args->Uint32Value(context).FromMaybe(0);
+                uint32_t num_bytes = args[0]->Uint32Value(context).FromMaybe(0);
                 if (num_bytes == 0) {
                     args.GetReturnValue().Set(v8::ArrayBuffer::New(isolate, 0));
                     return;
@@ -294,7 +294,7 @@ jobs:
                 v8::Isolate* isolate = args.GetIsolate();
                 v8::HandleScope handle_scope(isolate);
 
-                if (args.Length() < 1 || (!args->IsArrayBuffer() && !args->IsTypedArray())) {
+                if (args.Length() < 1 || (!args[0]->IsArrayBuffer() && !args[0]->IsTypedArray())) {
                     isolate->ThrowException(v8::String::NewFromUtf8(
                         isolate, "Invalid argument. Expected ArrayBuffer or TypedArray.").ToLocalChecked());
                     return;
@@ -304,13 +304,13 @@ jobs:
                 size_t offset = 0;
                 size_t length = 0;
 
-                if (args->IsTypedArray()) {
-                    v8::Local<v8::TypedArray> typed_array = args.As<v8::TypedArray>();
+                if (args[0]->IsTypedArray()) {
+                    v8::Local<v8::TypedArray> typed_array = args[0].As<v8::TypedArray>();
                     buffer = typed_array->Buffer();
                     offset = typed_array->ByteOffset();
                     length = typed_array->ByteLength();
                 } else {
-                    buffer = args.As<v8::ArrayBuffer>();
+                    buffer = args[0].As<v8::ArrayBuffer>();
                     length = buffer->ByteLength();
                 }
 
@@ -340,7 +340,6 @@ jobs:
                   return 1;
               }
 
-              // FIXED: ICU initialization dropped to match v8_enable_i18n_support=false
               std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform(0, v8::platform::IdleTaskSupport::kDisabled);
               v8::V8::InitializePlatform(platform.get());
               v8::V8::Initialize();
