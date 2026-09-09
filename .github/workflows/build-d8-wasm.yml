@@ -131,6 +131,8 @@ jobs:
         run: |
           cat << 'EOF' >> v8/src/base/macros.h
 
+          // Added feature validation macro to prevent ambiguity errors on modern compilers like GCC 13
+          #ifndef __cpp_lib_smart_ptr_for_overwrite
           #ifndef _WASI_UNIQUE_OVERWRITE_GUARD_
           #define _WASI_UNIQUE_OVERWRITE_GUARD_
           namespace std {
@@ -141,6 +143,7 @@ jobs:
               return unique_ptr<T>(new U[n]);
           }
           }
+          #endif
           #endif
           EOF
 
@@ -148,6 +151,7 @@ jobs:
         run: |
           cat << 'EOF' >> v8/src/bigint/bigint.h
 
+          #ifndef __cpp_lib_smart_ptr_for_overwrite
           #ifndef _WASI_UNIQUE_OVERWRITE_GUARD_
           #define _WASI_UNIQUE_OVERWRITE_GUARD_
           namespace std {
@@ -159,7 +163,9 @@ jobs:
           }
           }
           #endif
+          #endif
           EOF
+
 
       - name: Patch Explicit Types for std::atomic_ref CTAD
         run: |
