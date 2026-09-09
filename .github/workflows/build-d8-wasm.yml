@@ -185,17 +185,16 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          WASI_BIN="$(pwd)/../wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin"
           WASI_SYSROOT="$(pwd)/../wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/share/wasi-sysroot"
           
-          # Added use_sysroot=false to bypass the bullseye armhf requirement
+          # Separate host rules from destination compilation matrices explicitly
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"arm\"
             v8_target_cpu=\"arm\"
+            host_cpu=\"x64\"
             v8_monolithic=true
             is_component_build=false
-            use_sysroot=false
             v8_use_external_startup_data=false
             v8_use_snapshot=false
             v8_enable_jit=false
@@ -215,13 +214,7 @@ jobs:
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
             extra_cflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
             extra_ldflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
-            
-            ar=\"$WASI_BIN/llvm-ar\"
-            nm=\"$WASI_BIN/llvm-nm\"
-            cc=\"$WASI_BIN/clang\"
-            cxx=\"$WASI_BIN/clang++\"
           "
-
 
       - name: Compile Monolithic 32-Bit Interpreter Static Archive
         run: |
