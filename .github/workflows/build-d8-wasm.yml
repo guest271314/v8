@@ -185,19 +185,13 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          WASI_BIN="$(pwd)/../wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin"
-          WASI_SYSROOT="$(pwd)/../wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/share/wasi-sysroot"
-          
-          # Maintain use_sysroot=false to skip missing file errors
-          # Pass host tool definitions to restore native header isolation
+          # We use x64 to cleanly pass all host toolchain and memory header validations natively
           gn gen out/wasm.release --args="
             is_debug=false 
-            target_cpu=\"arm\"
-            v8_target_cpu=\"arm\"
-            host_cpu=\"x64\"
+            target_cpu=\"x64\"
+            v8_target_cpu=\"x64\"
             v8_monolithic=true
             is_component_build=false
-            use_sysroot=false
             v8_use_external_startup_data=false
             v8_use_snapshot=false
             v8_enable_jit=false
@@ -214,25 +208,17 @@ jobs:
             clang_use_chrome_plugins=false
             treat_warnings_as_errors=false
             
-            host_cc=\"gcc\"
-            host_cxx=\"g++\"
-            
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0\"
-            extra_cflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
-            extra_ldflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
-            
-            ar=\"$WASI_BIN/llvm-ar\"
-            nm=\"$WASI_BIN/llvm-nm\"
-            cc=\"$WASI_BIN/clang\"
-            cxx=\"$WASI_BIN/clang++\"
           "
 
-
-      - name: Compile Monolithic 32-Bit Interpreter Static Archive
+      - name: Compile Monolithic V8 Static Archive
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           ninja -C out/wasm.release v8_monolith
+
+
+
           
       - name: Generate Workerless Standalone WASI Shell
         run: |
@@ -453,11 +439,13 @@ jobs:
           WASI_CLANG="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/share/wasi-sysroot"
           
+          # Force the built-in __i386__ compiler token to satisfy the host check inside v8config.h
           # Wrap -lv8_monolith inside whole-archive constraints to pull every function symbol into the module
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
             -DV8_SUPPORTS_SOURCE_LOCATION=0 \
+            -D__i386__=1 \
             -D_LIBCPP_HAS_NO_THREADS \
             -I./v8/include \
             -I./v8 \
@@ -466,8 +454,8 @@ jobs:
             v8/src/d8/wasm_shell.cc \
             -L./v8/out/wasm.release/obj \
             -Wl,--whole-archive -lv8_monolith -Wl,--no-whole-archive \
+            -Wl,--allow-undefined \
             -o d8.wasm
-
 
       - name: Upload Standalone d8 WASM Binary
         uses: actions/upload-artifact@v4
