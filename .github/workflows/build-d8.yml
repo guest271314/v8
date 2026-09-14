@@ -66,14 +66,14 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           gn gen out/x64.release --args='
-            is_debug=false 
+            is_debug=true 
             target_cpu="x64" 
-            v8_monolithic=false 
-            is_component_build=false 
-            v8_use_external_startup_data=true
-            symbols_include_type="none" 
+            v8_monolithic=true 
+            is_component_build=true 
+            v8_use_external_startup_data=false
+            symbols_include_type="full" 
             blink_symbol_level=0 
-            v8_symbol_level=0
+            v8_symbol_level=2
             v8_enable_future_features=true
             v8_enable_webassembly=true
             v8_enable_wasm_gdb_remote_support=false
