@@ -69,7 +69,7 @@ jobs:
             is_debug=true 
             target_cpu="x64" 
             v8_monolithic=true 
-            is_component_build=true 
+            is_component_build=false 
             v8_use_external_startup_data=false
             symbols_include_type="full" 
             blink_symbol_level=0 
