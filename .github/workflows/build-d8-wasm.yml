@@ -216,9 +216,6 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           ninja -C out/wasm.release v8_monolith
-
-
-
           
       - name: Generate Workerless Standalone WASI Shell
         run: |
@@ -439,8 +436,7 @@ jobs:
           WASI_CLANG="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/share/wasi-sysroot"
           
-          # Force the built-in __i386__ compiler token to satisfy the host check inside v8config.h
-          # Wrap -lv8_monolith inside whole-archive constraints to pull every function symbol into the module
+          # Link your clean wasm_shell.cc against the genuine WebAssembly bitcode archive
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
