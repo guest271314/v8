@@ -402,7 +402,7 @@ jobs:
           WASI_PREFIX="$(pwd)/../wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux"
           WASI_SYSROOT="$WASI_PREFIX/share/wasi-sysroot"
           
-          # Force clang_base_path to your local wasi-sdk tools to guarantee pure WebAssembly bitcode output
+          # Force no_compiler_rt=true to stop GN from searching for native Linux compiler-rt paths
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -426,6 +426,7 @@ jobs:
             treat_warnings_as_errors=false
             
             clang_base_path=\"$WASI_PREFIX\"
+            no_compiler_rt=true
             
             extra_cflags_cc=\"-std=c++20 -DV8_SUPPORTS_SOURCE_LOCATION=0 -D__i386__=1 -D_LIBCPP_HAS_NO_THREADS\"
             extra_cflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
