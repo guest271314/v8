@@ -180,7 +180,7 @@ jobs:
           sed -i 's/class Worker :/class __attribute__((visibility("hidden"))) Worker :/g' v8/src/d8/d8.cc
           sed -i '/global_template->Set(isolate, "Worker",/d' v8/src/d8/d8.cc
 
-            - name: Generate Workerless Standalone WASI Shell
+      - name: Generate Workerless Standalone WASI Shell
         run: |
           cat << 'EOF' > v8/src/d8/wasm_shell.cc
           #include <stdio.h>
