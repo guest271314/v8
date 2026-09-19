@@ -393,8 +393,17 @@ jobs:
               return 0;
           }
           EOF
+
+      - name: Patch Out Hardcoded Compiler Runtime Dependencies
+        run: |
+          # Intercept Chromium's Clang config tool and clear the compiler_rt library dependency array
+          sed -i '/libs = \[.*libclang_rt.builtins.*\]/d' v8/build/config/clang/BUILD.gn
+          sed -i 's/libs += \[.*libclang_rt.builtins.*\]//g' v8/build/config/clang/BUILD.gn
+          # If the block uses a multiline structure, explicitly empty out the compiler_rt target configuration block
+          sed -i '/config("compiler_builtins") {/,/^}/ s/libs =.*/libs = []/' v8/build/config/clang/BUILD.gn
+
       
-      - name: Generate GN Build Configurations
+            - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
@@ -402,7 +411,6 @@ jobs:
           WASI_PREFIX="$(pwd)/../wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux"
           WASI_SYSROOT="$WASI_PREFIX/share/wasi-sysroot"
           
-          # Force compiler_rt mapping parameters to match wasi-sdk layouts
           gn gen out/wasm.release --args="
             is_debug=false 
             target_cpu=\"x64\"
@@ -432,24 +440,6 @@ jobs:
             extra_ldflags=\"--target=wasm32-wasi --sysroot=$WASI_SYSROOT\"
           "
 
-      - name: Symlink WASI-SDK Compiler Runtime for GN Compliance
-        run: |
-          # Create the exact platform directory structure Chromium expects inside the wasi-sdk directory tree
-          WASI_LIB_DIR="wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/lib/clang/23/lib/x86_64-unknown-linux-gnu"
-          mkdir -p "$WASI_LIB_DIR"
-          
-          # Locate the genuine WebAssembly built-in runtime and link it to the expected host path
-          WASI_BUILTIN_SRC=$(find wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/lib/clang -name "libclang_rt.builtins-wasm32.a" | head -n 1)
-          if [ -f "$WASI_BUILTIN_SRC" ]; then
-            ln -sf "$(pwd)/$WASI_BUILTIN_SRC" "$(pwd)/$WASI_LIB_DIR/libclang_rt.builtins.a"
-            echo "Successfully mapped $WASI_BUILTIN_SRC onto Chromium build configurations."
-          else
-            # Fallback placeholder generation if explicit path resolution drops out
-            touch "$(pwd)/$WASI_LIB_DIR/libclang_rt.builtins.a"
-            echo "Created empty fallback placeholder for compiler runtime layout validation."
-          fi
-
-
       - name: Compile Monolithic V8 Static Archive
         run: |
           cd v8
@@ -461,7 +451,6 @@ jobs:
           WASI_CLANG="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/bin/clang++"
           WASI_SYSROOT="$(pwd)/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/share/wasi-sysroot"
           
-          # Link your clean wasm_shell.cc against the true WebAssembly monolithic archive
           $WASI_CLANG -O3 -std=c++20 \
             --target=wasm32-wasi \
             --sysroot=$WASI_SYSROOT \
