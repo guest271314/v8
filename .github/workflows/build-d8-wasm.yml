@@ -403,7 +403,7 @@ jobs:
           sed -i '/config("compiler_builtins") {/,/^}/ s/libs =.*/libs = []/' v8/build/config/clang/BUILD.gn
 
       
-            - name: Generate GN Build Configurations
+      - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
