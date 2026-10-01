@@ -1,4 +1,4 @@
-name: Build V8 d8 Shell (Optimized Split Files)
+name: Build V8 d8 Shell (Native Host Target)
 
 on:
   push:
@@ -11,7 +11,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  build_d8:
+  build_d8_native:
     runs-on: ubuntu-latest
     
     steps:
@@ -27,25 +27,17 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git python3 curl xz-utils pkg-config ccache
+          sudo apt-get install -y git python3 curl xz-utils pkg-config ccache ninja-build
 
-      - name: Checkout V8 Fork Source
+      - name: Checkout V8 Source
         uses: actions/checkout@v4
         with:
           path: v8
 
       - name: Install Google Depot Tools
         run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          git clone https://googlesource.com
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
-
-      - name: Cache Ccache Compiler Objects
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          key: v8-ccache-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            v8-ccache-${{ runner.os }}-
 
       - name: Configure Gclient and Sync Dependencies
         run: |
@@ -65,39 +57,50 @@ jobs:
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          gn gen out/x64.release --args='
-            is_debug=true 
-            target_cpu="x64" 
-            v8_monolithic=true 
-            is_component_build=false 
-            v8_use_external_startup_data=false
-            symbols_include_type="full" 
-            blink_symbol_level=0 
-            v8_symbol_level=2
-            v8_enable_future_features=true
-            v8_enable_webassembly=true
-            v8_enable_wasm_gdb_remote_support=false
-            v8_enable_experimental_regexp_engine=false
-            v8_enable_embedded_builtins=true
-            cc_wrapper="ccache"
+          
+          # Hybrid Profiling Configuration Map
+          # Combines high release optimizations with explicit AST and bytecode diagnostics
+          gn gen out/release --args='
+            is_debug=false 
+            target_cpu="x64"
+            v8_monolithic=true
+            is_component_build=false
+            v8_use_external_startup_data=true
+            v8_use_snapshot=true
+            v8_enable_jit=false
+            v8_enable_embedded_builtins=false
+            symbols_include_type="none"
+            blink_symbol_level=0
+            v8_symbol_level=0
+            v8_enable_i18n_support=false
+            v8_enable_webassembly=false
+            v8_enable_sandbox=false
+            v8_enable_temporal_support=false
+            enable_rust=false
+            treat_warnings_as_errors=false
+            
+            v8_enable_disassembler=true
+            v8_object_print=true
+            v8_trace_maps=true
+            dcheck_always_on=false
           '
 
-      - name: Compile d8 Shell
+      - name: Compile Native Tools and Engine Shell via Ninja
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
-          ccache -z
-          ninja -C out/x64.release d8
-          ccache -s
-          
-          # Scrub leftover trace records to trim file storage footprint
-          strip --strip-all out/x64.release/d8
+          # Compiles d8 along with the required mksnapshot utility binary
+          ninja -C out/release d8 mksnapshot
 
-      - name: Upload d8 Binary Artifact
+      - name: Verify Tracing Framework Capabilities
+        run: |
+          # Automated check proving the release tracing binary accepts bytecode commands smoothly
+          ./v8/out/release/d8 --print-bytecode -e "const x = 1 + 2;"
+
+      - name: Archive Native Output Binaries
         uses: actions/upload-artifact@v4
         with:
-          name: d8-linux-x64-optimized-split
+          name: native-d8-tracing-engine
           path: |
-            v8/out/x64.release/d8
-            v8/out/x64.release/snapshot_blob.bin
-            v8/out/x64.release/icudtl.dat
+            v8/out/release/d8
+            v8/out/release/mksnapshot
