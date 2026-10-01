@@ -36,7 +36,7 @@ jobs:
 
       - name: Install Google Depot Tools
         run: |
-          git clone https://googlesource.com
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
           echo "$(pwd)/depot_tools" >> $GITHUB_PATH
 
       - name: Configure Gclient and Sync Dependencies
@@ -73,7 +73,7 @@ jobs:
             blink_symbol_level=0
             v8_symbol_level=0
             v8_enable_i18n_support=false
-            v8_enable_webassembly=false
+            v8_enable_webassembly=true
             v8_enable_sandbox=false
             v8_enable_temporal_support=false
             enable_rust=false
