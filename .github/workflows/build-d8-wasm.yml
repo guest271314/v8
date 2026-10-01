@@ -402,7 +402,7 @@ jobs:
           }
           EOF
 
-                - name: Generate GN Build Configurations
+      - name: Generate GN Build Configurations
         run: |
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
