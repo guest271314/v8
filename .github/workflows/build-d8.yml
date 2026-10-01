@@ -58,14 +58,13 @@ jobs:
           cd v8
           export PATH="$(pwd)/../depot_tools:$PATH"
           
-          # Hybrid Profiling Configuration Map
-          # Combines high release optimizations with explicit AST and bytecode diagnostics
+          # FIXED: Forced v8_use_external_startup_data=false to pass monolithic constraints
           gn gen out/release --args='
             is_debug=false 
             target_cpu="x64"
             v8_monolithic=true
             is_component_build=false
-            v8_use_external_startup_data=true
+            v8_use_external_startup_data=false
             v8_use_snapshot=true
             v8_enable_jit=false
             v8_enable_embedded_builtins=false
@@ -73,7 +72,7 @@ jobs:
             blink_symbol_level=0
             v8_symbol_level=0
             v8_enable_i18n_support=false
-            v8_enable_webassembly=true
+            v8_enable_webassembly=false
             v8_enable_sandbox=false
             v8_enable_temporal_support=false
             enable_rust=false
