@@ -5750,7 +5750,7 @@ void Shell::ReadStdinBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
-  if (args.Length() < 1 || (!args->IsArrayBuffer() && !args->IsTypedArray())) {
+  if (args.Length() < 1 || (!args[0]->IsArrayBuffer() && !args[0]->IsTypedArray())) {
     isolate->ThrowException(v8::String::NewFromUtf8(
         isolate, "Invalid argument. Expected ArrayBuffer or TypedArray view.").ToLocalChecked());
     return;
@@ -5760,13 +5760,13 @@ void Shell::ReadStdinBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   size_t offset = 0;
   size_t length = 0;
 
-  if (args->IsTypedArray()) {
-    v8::Local<v8::TypedArray> typed_array = args.As<v8::TypedArray>();
+  if (args[0]->IsTypedArray()) {
+    v8::Local<v8::TypedArray> typed_array = args[0].As<v8::TypedArray>();
     buffer = typed_array->Buffer();
     offset = typed_array->ByteOffset();
     length = typed_array->ByteLength();
   } else {
-    buffer = args.As<v8::ArrayBuffer>();
+    buffer = args[0].As<v8::ArrayBuffer>();
     length = buffer->ByteLength();
   }
 
@@ -5796,7 +5796,7 @@ void Shell::WriteStdoutBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
-  if (args.Length() < 1 || (!args->IsArrayBuffer() && !args->IsTypedArray())) {
+  if (args.Length() < 1 || (!args[0]->IsArrayBuffer() && !args[0]->IsTypedArray())) {
     isolate->ThrowException(v8::String::NewFromUtf8(
         isolate, "Invalid argument. Expected ArrayBuffer or TypedArray view.").ToLocalChecked());
     return;
@@ -5806,13 +5806,13 @@ void Shell::WriteStdoutBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   size_t offset = 0;
   size_t length = 0;
 
-  if (args->IsTypedArray()) {
-    v8::Local<v8::TypedArray> typed_array = args.As<v8::TypedArray>();
+  if (args[0]->IsTypedArray()) {
+    v8::Local<v8::TypedArray> typed_array = args[0].As<v8::TypedArray>();
     buffer = typed_array->Buffer();
     offset = typed_array->ByteOffset();
     length = typed_array->ByteLength();
   } else {
-    buffer = args.As<v8::ArrayBuffer>();
+    buffer = args[0].As<v8::ArrayBuffer>();
     length = buffer->ByteLength();
   }
 
@@ -5843,7 +5843,7 @@ void Shell::WriteStderrBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
   v8::HandleScope handle_scope(isolate);
 
-  if (args.Length() < 1 || (!args->IsArrayBuffer() && !args->IsTypedArray())) {
+  if (args.Length() < 1 || (!args[0]->IsArrayBuffer() && !args[0]->IsTypedArray())) {
     isolate->ThrowException(v8::String::NewFromUtf8(
         isolate, "Invalid argument. Expected ArrayBuffer or TypedArray view.").ToLocalChecked());
     return;
@@ -5853,13 +5853,13 @@ void Shell::WriteStderrBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   size_t offset = 0;
   size_t length = 0;
 
-  if (args->IsTypedArray()) {
-    v8::Local<v8::TypedArray> typed_array = args.As<v8::TypedArray>();
+  if (args[0]->IsTypedArray()) {
+    v8::Local<v8::TypedArray> typed_array = args[0].As<v8::TypedArray>();
     buffer = typed_array->Buffer();
     offset = typed_array->ByteOffset();
     length = typed_array->ByteLength();
   } else {
-    buffer = args.As<v8::ArrayBuffer>();
+    buffer = args[0].As<v8::ArrayBuffer>();
     length = buffer->ByteLength();
   }
 
