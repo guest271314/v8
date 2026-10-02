@@ -5744,65 +5744,64 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& info) {
 }
 
 void Shell::ReadStdinBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  v8::Isolate* isolate = args.GetIsolate();
-  v8::HandleScope handle_scope(isolate);
-  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
 
-  if (args.Length() < 1 || !args[0]->IsUint32()) {
-    isolate->ThrowException(
-        v8::String::NewFromUtf8(
-            isolate, "Invalid argument. Expected number of bytes.")
-            .ToLocalChecked());
-    return;
-  }
-
-  uint32_t num_bytes =
-      args[0]->Uint32Value(context).FromMaybe(0);
-  if (num_bytes == 0) {
-    args.GetReturnValue().Set(v8::ArrayBuffer::New(isolate, 0));
-    return;
-  }
-
-  std::unique_ptr<v8::BackingStore> backing_store =
-      v8::ArrayBuffer::NewBackingStore(isolate, num_bytes);
-  if (!backing_store) {
-    isolate->ThrowException(
-        v8::String::NewFromUtf8(
-            isolate, "Failed to allocate memory backing store.")
-            .ToLocalChecked());
-    return;
-  }
-
-  uint8_t* data = static_cast<uint8_t*>(backing_store->Data());
-  size_t bytes_read = 0;
-
-  while (bytes_read < num_bytes) {
-    ssize_t result =
-        read(STDIN_FILENO, data + bytes_read, num_bytes - bytes_read);
-    if (result < 0) {
-      if (errno == EINTR) continue;
-      isolate->ThrowException(
-          v8::String::NewFromUtf8(isolate, "System error reading from stdin.")
-              .ToLocalChecked());
-      return;
+    if (args.Length() < 1 || !args[0]->IsUint32()) {
+        isolate->ThrowException(v8::String::NewFromUtf8(
+            isolate, "Invalid argument. Expected maximum number of bytes.").ToLocalChecked());
+        return;
     }
-    if (result == 0) break;
-    bytes_read += result;
-  }
 
-  if (bytes_read < num_bytes) {
-    std::unique_ptr<v8::BackingStore> truncated_store =
-        v8::ArrayBuffer::NewBackingStore(isolate, bytes_read);
-    if (bytes_read > 0 && truncated_store) {
-      memcpy(truncated_store->Data(), data, bytes_read);
+    uint32_t max_bytes = args[0]->Uint32Value(context).FromMaybe(0);
+    if (max_bytes == 0) {
+        args.GetReturnValue().Set(v8::ArrayBuffer::New(isolate, 0));
+        return;
     }
-    backing_store = std::move(truncated_store);
-  }
 
-  v8::Local<v8::ArrayBuffer> buffer =
-      v8::ArrayBuffer::New(isolate, std::move(backing_store));
-  args.GetReturnValue().Set(buffer);
+    std::unique_ptr<v8::BackingStore> backing_store =
+        v8::ArrayBuffer::NewBackingStore(isolate, max_bytes);
+
+    if (!backing_store) {
+        isolate->ThrowException(v8::String::NewFromUtf8(
+            isolate, "Failed to allocate memory backing store.").ToLocalChecked());
+        return;
+    }
+
+    uint8_t* data = static_cast<uint8_t*>(backing_store->Data());
+    ssize_t bytes_read = 0;
+
+    // FIXED: Read whatever is immediately available up to max_bytes.
+    // Do not spin a strict blocking while-loop over an arbitrary allocation size.
+    do {
+        bytes_read = read(STDIN_FILENO, data, max_bytes);
+    } while (bytes_read < 0 && errno == EINTR); // Handle system interrupts gracefully
+
+    if (bytes_read < 0) {
+        isolate->ThrowException(v8::String::NewFromUtf8(
+            isolate, "System error reading from stdin.").ToLocalChecked());
+        return;
+    }
+
+    // If we read fewer bytes than max_bytes, copy to a perfectly sized buffer
+    // so JavaScript receives a pristine, accurate ArrayBuffer byteLength.
+    if (static_cast<size_t>(bytes_read) < max_bytes) {
+        std::unique_ptr<v8::BackingStore> truncated_store =
+            v8::ArrayBuffer::NewBackingStore(isolate, bytes_read);
+        if (bytes_read > 0 && truncated_store) {
+            memcpy(truncated_store->Data(), data, bytes_read);
+        }
+        v8::Local<v8::ArrayBuffer> truncated_buffer =
+            v8::ArrayBuffer::New(isolate, std::move(truncated_store));
+        args.GetReturnValue().Set(truncated_buffer);
+        return;
+    }
+
+    v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing_store));
+    args.GetReturnValue().Set(buffer);
 }
+
 
 void Shell::WriteStdoutBytes(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
