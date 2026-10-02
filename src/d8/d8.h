@@ -795,6 +795,8 @@ class Shell : public i::AllStatic {
       const v8::FunctionCallbackInfo<v8::Value>& args);
   static void WriteStdoutBytes(
       const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void WriteStderrBytes(
+      const v8::FunctionCallbackInfo<v8::Value>& args);
 #if defined(V8_OS_WIN)
   static void PreProcessUnicodeFilenameArg(char* argv[], int i);
   static void FreeUnicodeFilenameArgs();
