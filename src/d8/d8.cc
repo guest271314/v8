@@ -4806,6 +4806,9 @@ Local<ObjectTemplate> Shell::CreateOSTemplate(Isolate* isolate) {
   os_template->Set(
       isolate, "writeStdoutBytes",
       v8::FunctionTemplate::New(isolate, Shell::WriteStdoutBytes));
+  os_template->Set(
+      isolate, "writeStderrBytes",
+      v8::FunctionTemplate::New(isolate, Shell::WriteStderrBytes));
   return os_template;
 }
 
